@@ -7,7 +7,7 @@ import { fetchCapabilities } from '@/api/auth'
 import { useChat } from '@/chat/ChatProvider'
 import { batteryPermission, microphonePermission, requestMicrophonePermission, showsBatteryStep } from '@/setup/permissions'
 import { getSettings, updateSettings, useSettings } from '@/settings/store'
-import { audioAvailable, onCallAction, startCallService, stopCallService, updateCallNotification } from './audio'
+import { audioAvailable, onCallAction, onCallServiceState, startCallService, stopCallService, updateCallNotification } from './audio'
 import { callNotificationAction, callNotificationText } from './callNotification'
 import { addReplyAudio, beginReplyClip } from './replyClip'
 import { loadTuning } from './tuning'
@@ -44,8 +44,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const capabilities = useQuery({ queryKey: ['capabilities', settings.serverUrl], queryFn: fetchCapabilities })
   const [starting, setStarting] = useState(false)
   const router = useRouter()
-  // Phase 5: the call service is up, so leaving the app can keep the call going.
-  const [serviceUp, setServiceUp] = useState(false)
+  // Phase 5: the call service. Starting it is a request ('pending'); Android answers by promoting
+  // it ('up') or refusing ('failed'). Only a refusal stops leaving the app from keeping the call.
+  const [service, setService] = useState<'off' | 'pending' | 'up' | 'failed'>('off')
+  const serviceUp = service === 'up'
 
   useEffect(() => {
     void loadTuning()
@@ -54,7 +56,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const session = useVoiceSession({
     conversationId: chat.state.conversationId,
     connected: voiceReady,
-    keepInBackground: settings.keepListeningInBackground && serviceUp,
+    keepInBackground: settings.keepListeningInBackground && service !== 'failed',
     onHeard: markHeard,
     socket: useMemo(
       () => ({
@@ -127,12 +129,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   // refuses to start it at the moment you leave.
   useEffect(() => {
     if (!live) return
-    setServiceUp(startCallService())
+    setService(startCallService() ? 'pending' : 'failed')
     return () => {
       stopCallService()
-      setServiceUp(false)
+      setService('off')
     }
   }, [live])
+
+  // Phase 5: Android's answer. Refused (or the service stopped under a live call) while the app is
+  // already in the background: nothing keeps the mic there, so end the call as in phase 4.
+  useEffect(() => {
+    const subscription = onCallServiceState((running) => {
+      if (sessionRef.current.state === 'off') return
+      setService(running ? 'up' : 'failed')
+      if (!running && AppState.currentState !== 'active') sessionRef.current.leave()
+    })
+    return () => subscription.remove()
+  }, [])
 
   // Phase 5: the notification follows the call's state.
   const notificationText = callNotificationText(session)
@@ -177,20 +190,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   // opens the battery step once you're back (once; afterwards only Settings → Permissions shows it).
   const liveRef = useRef(live)
   liveRef.current = live
+  // The qualifying call is noted at once; the battery state is read on return, so a quick return
+  // can't beat the check, nor a late answer carry over to a later return.
   useEffect(() => {
-    let promptOnReturn = false
+    let backgroundCall = false
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'background') {
         const current = getSettings()
-        if (!liveRef.current || !current.keepListeningInBackground || current.batteryPromptShown || !showsBatteryStep()) return
+        if (liveRef.current && current.keepListeningInBackground && !current.batteryPromptShown && showsBatteryStep()) {
+          backgroundCall = true
+        }
+      } else if (next === 'active' && backgroundCall) {
+        backgroundCall = false
         void batteryPermission().then((battery) => {
-          if (battery === 'denied') promptOnReturn = true
+          if (battery !== 'denied' || getSettings().batteryPromptShown) return
+          updateSettings({ batteryPromptShown: true })
+          router.push('/setup/battery')
         })
-      } else if (next === 'active' && promptOnReturn) {
-        promptOnReturn = false
-        if (getSettings().batteryPromptShown) return
-        updateSettings({ batteryPromptShown: true })
-        router.push('/setup/battery')
       }
     })
     return () => subscription.remove()

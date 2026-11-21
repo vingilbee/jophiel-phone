@@ -44,6 +44,12 @@ class VoiceCallService : Service() {
 
     /** The call has to end: "swiped" (app swiped away from recents). */
     fun onCallEnded(reason: String)
+
+    /**
+     * Android promoted the service to the foreground (true), refused to (false), or it stopped
+     * (false). Starting it is only a request; this is the answer.
+     */
+    fun onServiceStateChanged(running: Boolean)
   }
 
   /** What the notification shows, set from JS on every state change. */
@@ -144,10 +150,13 @@ class VoiceCallService : Service() {
       }
       else -> {
         if (!foreground && !goForeground()) {
+          listener?.onServiceStateChanged(false)
           stopSelf()
           return START_NOT_STICKY
         }
+        val announce = running !== this
         running = this
+        if (announce) listener?.onServiceStateChanged(true)
         acquireLocks()
         startMediaSession()
         clearEnded(this)
@@ -196,7 +205,10 @@ class VoiceCallService : Service() {
   }
 
   private fun releaseAll() {
-    if (running === this) running = null
+    if (running === this) {
+      running = null
+      listener?.onServiceStateChanged(false)
+    }
     try {
       wakeLock?.takeIf { it.isHeld }?.release()
     } catch (e: Exception) {

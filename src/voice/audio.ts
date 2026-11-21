@@ -75,6 +75,11 @@ export function onCallEnded(listener: (reason: 'swiped') => void) {
   return JophielAudio ? JophielAudio.addListener('onCallEnded', (event) => listener(event.reason)) : noSubscription
 }
 
+/** Phase 5: the call service came up in the foreground (true), was refused or stopped (false). */
+export function onCallServiceState(listener: (running: boolean) => void) {
+  return JophielAudio ? JophielAudio.addListener('onCallServiceState', (event) => listener(event.running)) : noSubscription
+}
+
 /** Phase 5: the foreground service + notification that keeps a call going in the background. */
 export function startCallService(): boolean {
   try {

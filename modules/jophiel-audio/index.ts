@@ -25,6 +25,11 @@ export type JophielAudioEvents = {
   onCallAction: (event: { action: CallAction }) => void
   /** Phase 5: the call has to end (`swiped`: the app was swiped away from recents). */
   onCallEnded: (event: { reason: 'swiped' }) => void
+  /**
+   * Phase 5: Android promoted the call service to the foreground (`running: true`), refused to, or
+   * it stopped (`false`). `startCallService` only submits the request; this is the answer.
+   */
+  onCallServiceState: (event: { running: boolean }) => void
 }
 
 export type CallAction = 'interrupt' | 'talk' | 'mute' | 'unmute' | 'end' | 'button'
@@ -57,7 +62,8 @@ declare class JophielAudioModule extends NativeModule<JophielAudioEvents> {
   clearTimer(id: number): void
   /**
    * Phase 5: the foreground service that keeps a call going in the background. Start it while the
-   * app is visible (Android 14 refuses otherwise). False if Android refused.
+   * app is visible (Android 14 refuses otherwise). False if the request itself was refused; whether
+   * Android then promotes it comes as `onCallServiceState`.
    */
   startCallService(): boolean
   stopCallService(): void

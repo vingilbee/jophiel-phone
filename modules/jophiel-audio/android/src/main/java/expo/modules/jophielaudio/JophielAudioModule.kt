@@ -167,6 +167,10 @@ class JophielAudioModule : Module() {
     override fun onCallEnded(reason: String) {
       emit("onCallEnded", Bundle().apply { putString("reason", reason) })
     }
+
+    override fun onServiceStateChanged(running: Boolean) {
+      emit("onCallServiceState", Bundle().apply { putBoolean("running", running) })
+    }
   }
 
   override fun definition() = ModuleDefinition {
@@ -181,6 +185,7 @@ class JophielAudioModule : Module() {
       "onTimer",
       "onCallAction",
       "onCallEnded",
+      "onCallServiceState",
     )
 
     OnCreate {
