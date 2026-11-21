@@ -9,9 +9,14 @@ import { ChatConnection } from './connection'
 import type { VoiceState } from './frames'
 import { chatReducer, initialChatState, isReplying, isThinking, visibleItems, type ChatAction, type ChatItem, type ChatState } from './model'
 import { clearQueue, loadQueue, newTurnId, saveQueue } from './queue'
+import { clearTimeout as clearNativeTimeout, setTimeout as setNativeTimeout, type TimerHandle } from '@/voice/timers'
 import type { VoiceChannel } from './voice'
 
-/** After this long in the background the socket closes; push takes over. */
+/**
+ * After this long in the background the socket closes; push takes over. Not while a voice call is
+ * on (phase 5): then it starts when the call ends. On the native clock, since JS timers don't fire
+ * in the background.
+ */
 const BACKGROUND_CLOSE_MS = 30_000
 /** How long after a history snapshot a still-running turn has to show itself (its replayed stream). */
 const REPLAY_GRACE_MS = 10_000
@@ -78,6 +83,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const activity = useRef<'idle' | 'reading' | 'typing'>('reading')
   const voiceSense = useRef<VoiceSense>(VOICE_OFF)
   const queueLoaded = useRef(false)
+  const closeTimer = useRef<TimerHandle | null>(null)
   const [voiceReady, setVoiceReady] = useState(false)
 
   const connection = useMemo(
@@ -153,15 +159,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     connection.pump()
   }, [state.queue, connection])
 
+  const cancelBackgroundClose = useCallback(() => {
+    clearNativeTimeout(closeTimer.current)
+    closeTimer.current = null
+  }, [])
+
+  /** In the background with no call on: close in a while. */
+  const scheduleBackgroundClose = useCallback(() => {
+    if (appState.current === 'active' || voiceSense.current.voiceState !== 'off' || closeTimer.current !== null) return
+    closeTimer.current = setNativeTimeout(() => {
+      closeTimer.current = null
+      connection.stop()
+    }, BACKGROUND_CLOSE_MS)
+  }, [connection])
+
   // Foreground: connect, clear her notifications. Background: close after a while.
   useEffect(() => {
-    let closeTimer: ReturnType<typeof setTimeout> | null = null
     const subscription = AppState.addEventListener('change', (next) => {
       const was = appState.current
       appState.current = next
       if (next === 'active') {
-        if (closeTimer) clearTimeout(closeTimer)
-        closeTimer = null
+        cancelBackgroundClose()
         // Coming back from the background starts a fresh "down" clock: the socket was closed on purpose.
         setDownSince(connection.open ? null : Date.now())
         connection.start()
@@ -169,14 +187,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         void clearPresentedNotifications()
       } else if (was === 'active') {
         connection.sendSense()
-        closeTimer = setTimeout(() => connection.stop(), BACKGROUND_CLOSE_MS)
+        scheduleBackgroundClose()
       }
     })
     return () => {
       subscription.remove()
-      if (closeTimer) clearTimeout(closeTimer)
+      cancelBackgroundClose()
     }
-  }, [connection])
+  }, [connection, cancelBackgroundClose, scheduleBackgroundClose])
 
   // Drop the queue on sign-out: it belongs to this account.
   useEffect(
@@ -231,8 +249,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       voiceSense.current = next
       connection.sendSense()
+      // Phase 5: a call that ends in the background lets the socket close as usual.
+      if (next.voiceState === 'off') scheduleBackgroundClose()
+      else cancelBackgroundClose()
     },
-    [connection],
+    [connection, cancelBackgroundClose, scheduleBackgroundClose],
   )
   const markHeard = useCallback(
     (turnId: string, heardChars: number) => dispatch({ type: 'heard', turnId, heardChars }),

@@ -1,6 +1,7 @@
-import JophielAudio, { type AudioRoute } from '../../modules/jophiel-audio'
+import JophielAudio, { type AudioRoute, type CallAction } from '../../modules/jophiel-audio'
 import { startNativeCapture, type CaptureFrame, type MicCapture } from './capture'
 import { createPcmPlayer, type PcmPlayer } from './player'
+import { clearTimeout, setTimeout } from './timers'
 
 export type { AudioRoute }
 
@@ -38,6 +39,7 @@ export function createPlayer(): PcmPlayer {
     playedFrames: () => audio.playedFrames(),
     level: () => audio.level(),
     onDrained: (listener) => audio.addListener('onPlaybackDrained', listener),
+    clock: { setTimeout, clearTimeout },
   })
 }
 
@@ -54,6 +56,44 @@ export function onRouteChanged(listener: (route: AudioRoute) => void) {
 
 export function currentRoute(): AudioRoute {
   return JophielAudio ? JophielAudio.route() : 'none'
+}
+
+export type { CallAction }
+
+/** Phase 5: the audio came back after a phone call; the mic is open again. */
+export function onFocusRegained(listener: () => void) {
+  return JophielAudio ? JophielAudio.addListener('onFocusRegained', () => listener()) : noSubscription
+}
+
+/** Phase 5: pressed on the call notification, or the headset button. */
+export function onCallAction(listener: (action: CallAction) => void) {
+  return JophielAudio ? JophielAudio.addListener('onCallAction', (event) => listener(event.action)) : noSubscription
+}
+
+/** Phase 5: the app was swiped away from recents; the call has to end. */
+export function onCallEnded(listener: (reason: 'swiped') => void) {
+  return JophielAudio ? JophielAudio.addListener('onCallEnded', (event) => listener(event.reason)) : noSubscription
+}
+
+/** Phase 5: the foreground service + notification that keeps a call going in the background. */
+export function startCallService(): boolean {
+  try {
+    return JophielAudio?.startCallService() ?? false
+  } catch {
+    return false
+  }
+}
+
+export function stopCallService() {
+  JophielAudio?.stopCallService()
+}
+
+export function updateCallNotification(text: string, primary: 'interrupt' | 'talk' | null, muted: boolean) {
+  JophielAudio?.updateCallNotification(text, primary, muted)
+}
+
+export function showCallEndedNotification(text: string) {
+  JophielAudio?.showCallEndedNotification(text)
 }
 
 /** Belt and braces after a call ends: capture and playback off, audio mode and focus given back. */

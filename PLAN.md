@@ -50,7 +50,7 @@ needs native audio capture + playback and speaks the same protocol as the web ap
 ## Build order
 
 Each phase ends with something usable on the phone. Phases 0–3 are specified in
-detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`.
+detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`, phase 5 in `PLAN_PHASE_5.md`.
 
 | # | Phase | Phone side | Backend side (`../app`) | Size |
 |---|---|---|---|---|
@@ -61,12 +61,12 @@ detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`.
 | — | **Real-phone pass (S21)** | Tailscale + HTTPS, release APK, Samsung battery, notifications on the real phone | none | 1–2 days |
 | 4 | **Voice, app open** | Native (Kotlin) mic capture with Android's echo cancellation, PCM playback, VAD, push-to-talk; voice mode on Chat | none (reuses the WS voice protocol) | 6–9 days |
 | 5 | **Voice in the background** | Foreground service ("Jophiel is listening" notification), AirPods/speaker routing, Samsung battery setup, survives screen lock | none | 4–6 days |
-| 6 | **Location + Maps** | Report location as a sense; geofences for named places; open Google Maps with navigation | Tools: `get_user_location`, `search_places`, `get_route`, `open_navigation`; places table; Google Maps API key | 4–6 days |
-| 7 | **Chibi in the app** | Rive animation driven by her state (idle, listening, thinking, talking + lip sync, moods) | Her state/mood in the WS frames if not already there | 3–5 days (art made separately) |
-| 8 | **Floating chibi** | Overlay window over other apps (Kotlin), roaming, tap to talk, drag, hide per app | none | 5–8 days |
-| 9 | **Wake word** | Porcupine "hey Jophiel" inside the background service | none | 2–4 days |
-| 10 | **Phone actions** | Alarms, reminders, open app/link, notifications | Tools + a phone "body" (actions sent down over WS, or push when the app sleeps; results reported back) | 3–5 days |
-| 11 | **Phone control** | Accessibility service: read screen, tap, type, scroll, back | Tools `read_screen`/`tap`/`type_text`/…; allowed-apps list and confirmations enforced on both sides | 7–12 days |
+| 6 | **Location + Maps** | Location sent up as a sense (no `get_user_location` tool); named places (home, work…) and geofences; first phone action: open Google Maps navigating to a place | One general **phone-action tool** (actions sent down over WS, or push when the app sleeps; results reported back), first action `navigate_to`; `search_places` + `get_route` via Google Maps Platform so she answers travel questions hands-free ("25 min, heavy traffic"); places table; Maps API key | 4–6 days |
+| 7 | **Phone actions** | Open apps/links: WhatsApp (chat with the message pre-typed), Discord (app or channel link), Spotify (song/album/playlist), Maps; play/pause/next/volume for whatever is playing; read notifications and reply via their reply button (works while locked); alarms, reminders. New permission: notification access | More actions on the same phone-action tool | 3–5 days |
+| 8 | **Phone control** | Accessibility service: read screen, tap, type, scroll, back. For whatever phase 7 can't do directly (press send, add a Maps stop, search inside Spotify). Setup step for Samsung's "Allow restricted settings" | Tools `read_screen`/`tap`/`type_text`/…; allowed-apps list and confirmations enforced on both sides | 7–12 days |
+| 9 | **Chibi in the app** | Rive animation driven by her state (idle, listening, thinking, talking + lip sync, moods) | Her state/mood in the WS frames if not already there | 3–5 days (art made separately) |
+| 10 | **Floating chibi** | Overlay window over other apps (Kotlin), roaming, tap to talk, drag, hide per app | none | 5–8 days |
+| 11 | **Wake word** | Porcupine "hey Jophiel" inside the background service | none | 2–4 days |
 | 12 | **Default assistant** | Jophiel as the assistant on power-button long-press | none | 2–3 days |
 
 ## How big is it
@@ -78,7 +78,7 @@ detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`.
 - **Code size, roughly:** phone app 10–15k lines TypeScript + 2–4k lines Kotlin; backend
   additions 3–5k lines Python (mostly tools, the phone body, push, tests).
 - **Not code, made separately:** the chibi art and its Rive file. The app only needs
-  the Rive file's state-machine inputs agreed on (see phase 7).
+  the Rive file's state-machine inputs agreed on (see phase 9).
 
 ## Stack
 
@@ -102,6 +102,21 @@ detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`.
   required JDK, use 17 if the build complains).
 - Missing: Android SDK + `adb` (install Android Studio, or the command-line tools),
   Tailscale (Mac app and the phone app).
+
+## Locked phone: what she can and can't do
+
+The phase 6–8 tools are grouped together (decided 2026-11-21); the chibi and the wake word come after.
+
+- **Works locked, phone in the pocket:** music controls, replying to notifications, reading
+  notifications, location (if set to "always"), alarms and reminders, talking to her (phase 5).
+- **Needs the phone unlocked:** opening an app (it opens behind the lock screen otherwise),
+  a new WhatsApp message to someone with no notification to reply to, and all of phase 8
+  (it uses the real screen, visibly). She can never enter the PIN; she says "unlock your
+  phone and I'll open Maps".
+- **Samsung Smart Lock** (Settings → Lock screen → Smart Lock), owner's choice, optional:
+  trusted device = the owner's AirPods only. While they're connected the lock screen is a
+  swipe, which she can get past herself (wake screen + dismiss). Android still asks for the
+  PIN after a restart and after ~4 h without a real unlock.
 
 ## Samsung S21 notes
 

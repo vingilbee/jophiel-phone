@@ -262,6 +262,8 @@ Owner tested on the S21 with AirPods Pro:
   quiet, so zeros alone don't mean a dead mic.
 - AirPods mute their mic while she plays: no spoken barge-in on AirPods; the Interrupt button
   works. Not a bug.
+  Re-checked in the phase 5 pass: the owner reports spoken barge-in works (see PLAN_PHASE_5.md,
+  S21 results).
 - Loudspeaker echo test (4.2b): 0% of the barge-in threshold, so no fallback needed (both stay off).
   On a real call she never cut in on herself; spoken barge-in over her on the loudspeaker paused
   her (hold), and the server resolved it (`stop`).

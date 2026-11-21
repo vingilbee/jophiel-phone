@@ -13,6 +13,10 @@ export interface PhoneSettings {
   setupSeen: boolean
   /** ISO time of the last open chat connection. */
   lastConnectedAt: string | null
+  /** Phase 5: a voice call keeps going when you leave the app or lock the screen. */
+  keepListeningInBackground: boolean
+  /** Phase 5: the one-time battery prompt after the first background call was shown. */
+  batteryPromptShown: boolean
 }
 
 const KEY = 'jophiel.settings'
@@ -23,6 +27,8 @@ export function defaults(): PhoneSettings {
     serverUrl: defaultServerUrl(),
     setupSeen: false,
     lastConnectedAt: null,
+    keepListeningInBackground: true,
+    batteryPromptShown: false,
   }
 }
 

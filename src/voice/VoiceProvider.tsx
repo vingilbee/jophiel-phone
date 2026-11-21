@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
+import { useRouter } from 'expo-router'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { AppState } from 'react-native'
 import { fetchCapabilities } from '@/api/auth'
 import { useChat } from '@/chat/ChatProvider'
-import { microphonePermission, requestMicrophonePermission } from '@/setup/permissions'
-import { useSettings } from '@/settings/store'
-import { audioAvailable } from './audio'
+import { batteryPermission, microphonePermission, requestMicrophonePermission, showsBatteryStep } from '@/setup/permissions'
+import { getSettings, updateSettings, useSettings } from '@/settings/store'
+import { audioAvailable, onCallAction, startCallService, stopCallService, updateCallNotification } from './audio'
+import { callNotificationAction, callNotificationText } from './callNotification'
 import { addReplyAudio, beginReplyClip } from './replyClip'
 import { loadTuning } from './tuning'
 import { useVoiceSession, type VoiceSession } from './useVoiceSession'
@@ -40,6 +43,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const { voice: channel, voiceReady, setVoiceSense, markHeard } = chat
   const capabilities = useQuery({ queryKey: ['capabilities', settings.serverUrl], queryFn: fetchCapabilities })
   const [starting, setStarting] = useState(false)
+  const router = useRouter()
+  // Phase 5: the call service is up, so leaving the app can keep the call going.
+  const [serviceUp, setServiceUp] = useState(false)
 
   useEffect(() => {
     void loadTuning()
@@ -48,6 +54,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const session = useVoiceSession({
     conversationId: chat.state.conversationId,
     connected: voiceReady,
+    keepInBackground: settings.keepListeningInBackground && serviceUp,
     onHeard: markHeard,
     socket: useMemo(
       () => ({
@@ -114,6 +121,80 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {})
     }
   }, [live])
+
+  // Phase 5: the call service (notification, wake and Wi-Fi locks) lives as long as the call. Started
+  // for every call while the app is visible, even with the background setting off: Android 14
+  // refuses to start it at the moment you leave.
+  useEffect(() => {
+    if (!live) return
+    setServiceUp(startCallService())
+    return () => {
+      stopCallService()
+      setServiceUp(false)
+    }
+  }, [live])
+
+  // Phase 5: the notification follows the call's state.
+  const notificationText = callNotificationText(session)
+  const notificationAction = callNotificationAction(session)
+  useEffect(() => {
+    if (!live) return
+    updateCallNotification(notificationText, notificationAction, session.muted)
+  }, [live, notificationText, notificationAction, session.muted, serviceUp])
+
+  // Phase 5: the notification's buttons and the headset button.
+  useEffect(() => {
+    const subscription = onCallAction((action) => {
+      const current = sessionRef.current
+      if (current.state === 'off') return
+      switch (action) {
+        case 'interrupt':
+          current.interrupt()
+          break
+        case 'talk':
+          current.pushToTalk()
+          break
+        case 'mute':
+          current.setMuted(true)
+          break
+        case 'unmute':
+          current.setMuted(false)
+          break
+        case 'end':
+          current.disable()
+          break
+        case 'button':
+          // Headset / AirPods button (best effort): Interrupt while she's busy, Talk now when idle.
+          if (current.state === 'thinking' || current.state === 'speaking' || current.holding) current.interrupt()
+          else if (current.state === 'idle' && !current.muted) current.pushToTalk()
+          break
+      }
+    })
+    return () => subscription.remove()
+  }, [])
+
+  // Phase 5: the first call that goes to the background while Samsung may put the app to sleep
+  // opens the battery step once you're back (once; afterwards only Settings → Permissions shows it).
+  const liveRef = useRef(live)
+  liveRef.current = live
+  useEffect(() => {
+    let promptOnReturn = false
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'background') {
+        const current = getSettings()
+        if (!liveRef.current || !current.keepListeningInBackground || current.batteryPromptShown || !showsBatteryStep()) return
+        void batteryPermission().then((battery) => {
+          if (battery === 'denied') promptOnReturn = true
+        })
+      } else if (next === 'active' && promptOnReturn) {
+        promptOnReturn = false
+        if (getSettings().batteryPromptShown) return
+        updateSettings({ batteryPromptShown: true })
+        router.push('/setup/battery')
+      }
+    })
+    return () => subscription.remove()
+  }, [router])
 
   const { enable } = session
   const start = useCallback(async (): Promise<StartOutcome> => {

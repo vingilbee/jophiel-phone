@@ -20,6 +20,7 @@ import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
@@ -94,10 +95,17 @@ class JophielAudioModule : Module() {
   private var route = "none"
   private var scoStarted = false
 
+  /** Phase 5: set when a call or another app took the audio, so its return can be reported. */
+  private var focusLost = false
+
   private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
     // A call or another app took the audio. Ducking (a notification sound) is not a reason to stop.
     if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+      focusLost = true
       emit("onInterrupted", Bundle().apply { putString("reason", "focus_lost") })
+    } else if (change == AudioManager.AUDIOFOCUS_GAIN && focusLost) {
+      focusLost = false
+      regainSession()
     }
   }
 
@@ -141,10 +149,83 @@ class JophielAudioModule : Module() {
 
   private val levels = ArrayDeque<LevelBlock>()
 
+  // ---- Phase 5: the call's clock, and the call service ----
+
+  /**
+   * JS timers stop with the app in the background (RN drives them from the display's vsync). The
+   * voice loop's timers run here instead, on their own thread; the call's wake lock keeps the CPU up.
+   */
+  private var clockThread: HandlerThread? = null
+  private var clockHandler: Handler? = null
+  private val timers = HashMap<Int, Runnable>()
+
+  private val callListener = object : VoiceCallService.Listener {
+    override fun onCallAction(action: String) {
+      emit("onCallAction", Bundle().apply { putString("action", action) })
+    }
+
+    override fun onCallEnded(reason: String) {
+      emit("onCallEnded", Bundle().apply { putString("reason", reason) })
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("JophielAudio")
 
-    Events("onFrame", "onPlaybackDrained", "onInterrupted", "onRouteChanged")
+    Events(
+      "onFrame",
+      "onPlaybackDrained",
+      "onInterrupted",
+      "onRouteChanged",
+      "onFocusRegained",
+      "onTimer",
+      "onCallAction",
+      "onCallEnded",
+    )
+
+    OnCreate {
+      VoiceCallService.listener = callListener
+    }
+
+    /** Fires `onTimer(id)` once after `ms`, on a native thread that keeps going in the background. */
+    Function("setTimer") { id: Int, ms: Double ->
+      setTimerInternal(id, ms.toLong())
+    }
+
+    Function("clearTimer") { id: Int ->
+      synchronized(timers) {
+        timers.remove(id)?.let { clockHandler?.removeCallbacks(it) }
+      }
+    }
+
+    /** Start the call service. Only while the app is visible: Android 14 refuses it later. */
+    Function("startCallService") {
+      try {
+        VoiceCallService.start(context)
+        return@Function true
+      } catch (e: Exception) {
+        Log.w(TAG, "call service not started", e)
+        return@Function false
+      }
+    }
+
+    Function("stopCallService") {
+      VoiceCallService.stop(context)
+    }
+
+    Function("isCallServiceRunning") {
+      return@Function VoiceCallService.isRunning
+    }
+
+    /** The call notification: state in words, the one context action (interrupt / talk / none), mute. */
+    Function("updateCallNotification") { text: String, primary: String?, isMuted: Boolean ->
+      VoiceCallService.update(context, VoiceCallService.Display(text, primary, isMuted))
+    }
+
+    /** A note after the call ended by itself in the background. */
+    Function("showCallEndedNotification") { text: String ->
+      VoiceCallService.showEnded(context, text)
+    }
 
     /** Opens the mic (and the voice session). Resolves with the capture sample rate. */
     AsyncFunction("startCapture") {
@@ -232,6 +313,19 @@ class JophielAudioModule : Module() {
     }
 
     OnDestroy {
+      // The call lives in JS; with JS gone (reload, process ending) nothing is left to own it.
+      if (VoiceCallService.listener === callListener) VoiceCallService.listener = null
+      try {
+        appContext.reactContext?.let { VoiceCallService.stop(it) }
+      } catch (e: Exception) {
+        Log.w(TAG, "call service stop failed", e)
+      }
+      synchronized(timers) {
+        timers.clear()
+        clockThread?.quitSafely()
+        clockThread = null
+        clockHandler = null
+      }
       stopCaptureInternal()
       lock.withLock {
         releaseTrackLocked()
@@ -245,6 +339,31 @@ class JophielAudioModule : Module() {
       sendEvent(name, body)
     } catch (e: Throwable) {
       // The JS side may be gone (reload); nothing to tell.
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Clock (phase 5)
+
+  private fun setTimerInternal(id: Int, ms: Long) {
+    synchronized(timers) {
+      val handler = clockHandler ?: run {
+        val thread = HandlerThread("jophiel-clock").also { it.start() }
+        clockThread = thread
+        Handler(thread.looper).also { clockHandler = it }
+      }
+      timers.remove(id)?.let { handler.removeCallbacks(it) }
+      val runnable = object : Runnable {
+        override fun run() {
+          synchronized(timers) {
+            if (timers[id] !== this) return
+            timers.remove(id)
+          }
+          emit("onTimer", Bundle().apply { putInt("id", id) })
+        }
+      }
+      timers[id] = runnable
+      handler.postDelayed(runnable, max(0L, ms))
     }
   }
 
@@ -301,7 +420,37 @@ class JophielAudioModule : Module() {
     manager.mode = if (previousMode == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else previousMode
     focusRequest?.let { manager.abandonAudioFocusRequest(it) }
     focusRequest = null
+    focusLost = false
     setRouteLocked("none")
+  }
+
+  /**
+   * Phase 5: the audio came back after a phone call (or another app). The call may have left the
+   * audio mode and routing changed, and the mic silenced: take call mode back, route again, reopen
+   * the mic, then tell JS so it listens again.
+   */
+  private fun regainSession() {
+    val hadMic: Boolean
+    lock.withLock {
+      if (!sessionActive) return
+      audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+      applyRouteLocked()
+      hadMic = recorder != null
+    }
+    if (hadMic) {
+      val wasMuted = muted
+      stopCaptureInternal()
+      try {
+        startCaptureInternal()
+        muted = wasMuted
+      } catch (e: Exception) {
+        Log.w(TAG, "mic restart after focus failed", e)
+        lock.withLock { endSessionIfIdle() }
+        emit("onInterrupted", Bundle().apply { putString("reason", "mic_lost") })
+        return
+      }
+    }
+    emit("onFocusRegained", Bundle())
   }
 
   private fun applyRoute() {
