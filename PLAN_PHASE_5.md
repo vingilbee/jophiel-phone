@@ -43,7 +43,7 @@ itself stays the phase 4 port of the web code.
 |---|---|
 | Leave the app / lock the screen, setting **on** (default) | Call continues; notification shows |
 | Same, setting **off** | Phase 4 behavior: the call ends, her reply finishes as text |
-| Phone call or another app takes audio focus | Voice pauses (mic muted, her audio stopped as in phase 4); when focus comes back, it **listens again by itself** |
+| Phone call or another app takes audio focus | Voice pauses (mic muted, her audio stopped as in phase 4); when focus comes back, it **listens again by itself**. Exception: a *permanent* loss (another app starts media) never gets focus back from Android, so it stays "Paused for a call" until you tap Unmute (see Implementation notes) |
 | App swiped away from recents | **Call ends**, notification goes away |
 | **30 min** without *your* speech, in the background | Call ends; notification "Call ended after 30 min of quiet". Her nudges don't reset the clock. Not applied while the app is on screen. |
 | **2 min** without a connection, in the background | Call ends; notification "Call ended: couldn't reach Jophiel". With the app open it keeps retrying (phase 4). |

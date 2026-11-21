@@ -129,7 +129,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   // refuses to start it at the moment you leave.
   useEffect(() => {
     if (!live) return
-    setService(startCallService() ? 'pending' : 'failed')
+    const requested = startCallService()
+    setService(requested ? 'pending' : 'failed')
+    // The call went live after you'd already left (the mic opened late), so the leaving rule never
+    // saw it: apply it now. No service request, or the setting off, means it can't stay.
+    if (AppState.currentState !== 'active' && (!requested || !getSettings().keepListeningInBackground)) {
+      sessionRef.current.leave()
+    }
     return () => {
       stopCallService()
       setService('off')
