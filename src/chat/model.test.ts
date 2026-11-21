@@ -265,3 +265,27 @@ describe('failed messages', () => {
     expect(s.queue.map((q) => q.turnId)).toEqual(['t2'])
   })
 })
+
+describe('server times without a time zone are UTC', () => {
+  const { serverTime } = require('./frames') as typeof import('./frames')
+  test('serverTime', () => {
+    expect(serverTime('2026-11-21T07:17:00')).toBe('2026-11-21T07:17:00Z')
+    expect(serverTime('2026-11-21T07:17:00.123456')).toBe('2026-11-21T07:17:00.123456Z')
+    expect(serverTime('2026-11-21T07:17:00+00:00')).toBe('2026-11-21T07:17:00+00:00')
+    expect(serverTime('2026-11-20T23:16:00-08:00')).toBe('2026-11-20T23:16:00-08:00')
+    expect(serverTime('2026-11-21T07:17:00Z')).toBe('2026-11-21T07:17:00Z')
+  })
+  test('a message sent right away shows no wait, and her reply sorts into the same day', () => {
+    const s = run(initialChatState, {
+      type: 'history',
+      conversation_id: 'c1',
+      messages: [
+        // what the backend really sends: written_at with an offset, created_at without
+        stored({ id: 'u1', role: 'user', content: 'hi', written_at: '2026-11-21T07:16:00+00:00', created_at: '2026-11-21T07:16:01' }),
+        stored({ id: 'a1', role: 'assistant', content: 'hey', created_at: '2026-11-21T07:17:00' }),
+      ],
+    })
+    expect(s.messages[0]?.arrivedAt).toBeNull()
+    expect(Date.parse(s.messages[1]!.at) - Date.parse(s.messages[0]!.at)).toBe(60_000)
+  })
+})
