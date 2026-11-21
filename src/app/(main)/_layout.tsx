@@ -7,6 +7,7 @@ import { initialTappedMessageId, notifee, onPendingTap, takePendingTap, tappedMe
 import { startPush, stopPushForSignOut } from '@/push/registration'
 import { getSettings } from '@/settings/store'
 import { useColors } from '@/theme'
+import { VoiceProvider } from '@/voice/VoiceProvider'
 
 function useNotificationTaps() {
   const router = useRouter()
@@ -51,17 +52,20 @@ export default function MainLayout() {
 
   return (
     <ChatProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="setup/[step]" />
-      </Stack>
+      <VoiceProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: 'slide_from_right',
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="setup/[step]" />
+          <Stack.Screen name="developer" />
+        </Stack>
+      </VoiceProvider>
     </ChatProvider>
   )
 }

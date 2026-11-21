@@ -11,7 +11,7 @@ import { AppText } from '@/components/AppText'
 import { IconButton, ListRow, SectionHeader } from '@/components/Controls'
 import type { ConnectionPhase } from '@/connection/state'
 import { pushEnabled } from '@/push/config'
-import { openNotificationSettings } from '@/setup/permissions'
+import { openAppSettings, openNotificationSettings } from '@/setup/permissions'
 import { usePermissions } from '@/setup/usePermissions'
 import { useSettings } from '@/settings/store'
 import { space, useColors } from '@/theme'
@@ -90,6 +90,18 @@ export default function Settings() {
             onPress={() => void openNotificationSettings()}
           />
         ) : null}
+        <ListRow
+          icon={permissions.microphone === 'granted' ? 'microphone-outline' : 'microphone-off'}
+          title="Microphone"
+          supporting={
+            permissions.microphone === 'granted'
+              ? 'Allowed, for voice calls with her.'
+              : permissions.microphone === 'unknown'
+                ? 'Checking…'
+                : 'Off. Tap to allow it in Android (needed for voice calls).'
+          }
+          onPress={() => void openAppSettings()}
+        />
         {permissions.battery ? (
           <ListRow
             icon="battery-heart-variant"
@@ -98,6 +110,18 @@ export default function Settings() {
           />
         ) : null}
         <ListRow icon="playlist-check" title="Open Setup again" onPress={() => router.push('/setup/connection')} />
+
+        {__DEV__ ? (
+          <>
+            <SectionHeader title="Developer" />
+            <ListRow
+              icon="tune-vertical"
+              title="Voice: echo test and tuning"
+              supporting="Mic meter, echo check, VAD values, echo fallbacks"
+              onPress={() => router.push('/developer')}
+            />
+          </>
+        ) : null}
 
         <SectionHeader title="About" />
         <ListRow

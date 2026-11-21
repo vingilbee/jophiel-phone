@@ -5,14 +5,34 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } fro
 import { baseUrl } from '@/api/client'
 import { stripStickers } from '@/chat/frames'
 import { delayLabel, timeLabel, type ChatRow } from '@/chat/format'
+import { parseBlocks, visibleLength } from '@/chat/markdown'
 import type { Tick } from '@/chat/model'
 import { radius, space, useColors, type Palette } from '@/theme'
+import { heardCut } from '@/voice/heardText'
 import { AppText } from './AppText'
 import { Icon } from './Controls'
 import { JophielMark, MeMark } from './Marks'
 import { Markdown } from './Markdown'
 
 const AVATAR = 32
+
+/** `#RRGGBB` at `alpha` (RN reads `#RRGGBBAA`). */
+function withAlpha(hex: string, alpha: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex
+  return hex + Math.round(alpha * 255).toString(16).padStart(2, '0')
+}
+
+/**
+ * A spoken reply you cut off: where the part you didn't hear starts, in characters the bubble shows
+ * (the heard part measured on its own parse, the same way the whole message renders). Null when you
+ * heard it all.
+ */
+function unheardFrom(raw: string, heardChars: number | null): number | null {
+  if (heardChars === null) return null
+  const cut = heardCut(raw, heardChars)
+  if (cut >= raw.length) return null
+  return visibleLength(parseBlocks(stripStickers(raw.slice(0, cut)).trimStart()))
+}
 
 function TickIcon({ tick, colors }: { tick: Tick; colors: Palette }) {
   if (tick === 'failed') return <Icon name="alert-circle-outline" size={16} color={colors.error} />
@@ -43,6 +63,7 @@ export const Bubble = memo(function Bubble({ row, token, highlighted, onCopied, 
   const { item, firstOfRun } = row
   const mine = item.role === 'user'
   const text = stripStickers(item.text).trim()
+  const fadeFrom = item.role === 'assistant' ? unheardFrom(item.text, item.heardChars) : null
   const flash = useSharedValue(0)
 
   useEffect(() => {
@@ -81,6 +102,7 @@ export const Bubble = memo(function Bubble({ row, token, highlighted, onCopied, 
     item.tick ? TICK_LABEL[item.tick] : null,
     waited,
     statusNote,
+    fadeFrom !== null ? "the end wasn't said aloud: you interrupted" : null,
   ]
     .filter(Boolean)
     .join(', ')
@@ -128,6 +150,8 @@ export const Bubble = memo(function Bubble({ row, token, highlighted, onCopied, 
             ink={ink}
             linkColor={colors.primary}
             codeBackground={mine ? colors.background : colors.surfaceContainerHigh}
+            fadeFrom={fadeFrom ?? undefined}
+            fadedInk={withAlpha(ink, 0.4)}
           />
         ) : null}
         <View style={styles.meta} importantForAccessibility="no-hide-descendants">

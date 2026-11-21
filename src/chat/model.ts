@@ -1,3 +1,4 @@
+import { heardCut } from '@/voice/heardText'
 import { serverTime, stripStickers, type MessageStatus, type ServerFrame, type StoredMessage } from './frames'
 
 /**
@@ -24,6 +25,11 @@ export interface ChatItem {
   unprompted: boolean
   imageIds: string[]
   assetIds: string[]
+  /**
+   * Her spoken reply was cut off: characters of `text` you heard. The rest was written but never
+   * said aloud, and shows faded. Null when you heard it all (or it wasn't spoken).
+   */
+  heardChars: number | null
 }
 
 /** A message written on the phone and not yet saved by the backend. Persisted. */
@@ -68,6 +74,10 @@ export type ChatAction =
   | { type: 'deleteQueued'; turnId: string }
   | { type: 'clearError' }
   | { type: 'reset' }
+  /** A spoken reply was cut off after you heard `heardChars` of its text. */
+  | { type: 'heard'; turnId: string; heardChars: number }
+  /** A voice reply was cut off here (barge-in): settle its bubble now, as stopped. */
+  | { type: 'settleTurn'; turnId: string }
 
 export const initialChatState: ChatState = {
   conversationId: null,
@@ -114,7 +124,14 @@ export function fromStored(message: StoredMessage, seenIds: ReadonlySet<string> 
     unprompted: false,
     imageIds: message.image_ids ?? [],
     assetIds: message.asset_ids ?? [],
+    heardChars: storedHeard(message),
   }
+}
+
+/** `heard_chars` only matters when it cuts the reply short. */
+function storedHeard(message: StoredMessage): number | null {
+  if (message.role !== 'assistant' || message.heard_chars == null) return null
+  return heardCut(message.content, message.heard_chars) < message.content.length ? message.heard_chars : null
 }
 
 function liveItem(key: string, now: string, fields: Partial<ChatItem> = {}): ChatItem {
@@ -132,6 +149,7 @@ function liveItem(key: string, now: string, fields: Partial<ChatItem> = {}): Cha
     unprompted: false,
     imageIds: [],
     assetIds: [],
+    heardChars: null,
     ...fields,
   }
 }
@@ -214,7 +232,18 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
         queue: next.queue.filter((q) => q.turnId !== frame.turn_id),
         activeTurns: next.activeTurns.includes(frame.turn_id) ? next.activeTurns : [...next.activeTurns, frame.turn_id],
       }
-      if (!queued || already) return next
+      if (!queued) {
+        // A voice turn: its transcript bubble is already shown; now it has a server id (for ✓✓).
+        return {
+          ...next,
+          messages: next.messages.map((m) =>
+            m.role === 'user' && m.id === null && m.turnId === frame.turn_id
+              ? { ...m, id: frame.user_message_id, tick: next.seenIds.includes(frame.user_message_id) ? 'seen' : 'saved' }
+              : m,
+          ),
+        }
+      }
+      if (already) return next
       const item: ChatItem = {
         key: `m:${frame.user_message_id}`,
         id: frame.user_message_id,
@@ -229,6 +258,36 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
         unprompted: false,
         imageIds: [],
         assetIds: [],
+        heardChars: null,
+      }
+      return { ...next, messages: [...next.messages, item] }
+    }
+
+    case 'transcript': {
+      // What she heard you say: your turn's bubble, saved by the backend right after this frame.
+      const content = frame.content.trim()
+      if (!content) return state
+      const key = `v:${frame.turn_id ?? now}`
+      if (state.messages.some((m) => m.key === key || (frame.turn_id && m.role === 'user' && m.turnId === frame.turn_id))) {
+        return state
+      }
+      // Talking over her settles whatever of her reply streamed so far above your words.
+      const next = promote(state, (item) => !item.unprompted)
+      const item: ChatItem = {
+        key,
+        id: null,
+        turnId: frame.turn_id ?? null,
+        role: 'user',
+        text: content,
+        at: now,
+        arrivedAt: null,
+        tick: 'saved',
+        status: 'completed',
+        streaming: false,
+        unprompted: false,
+        imageIds: [],
+        assetIds: [],
+        heardChars: null,
       }
       return { ...next, messages: [...next.messages, item] }
     }
@@ -340,6 +399,30 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     }
     case 'clearError':
       return { ...state, error: null }
+    case 'heard': {
+      // The newest bubble of that turn: her reply is the last item carrying its turn id.
+      const mark = (items: ChatItem[]) => {
+        for (let i = items.length - 1; i >= 0; i--) {
+          const item = items[i] as ChatItem
+          if (item.role === 'assistant' && item.turnId === action.turnId) {
+            return items.map((m, j) => (j === i ? { ...m, heardChars: action.heardChars } : m))
+          }
+        }
+        return null
+      }
+      const live = mark(state.live)
+      if (live) return { ...state, live }
+      const messages = mark(state.messages)
+      return messages ? { ...state, messages } : state
+    }
+    case 'settleTurn': {
+      const settled = promote(state, (item) => !item.unprompted && item.turnId === action.turnId, 'partial')
+      return {
+        ...settled,
+        activeTurns: settled.activeTurns.filter((t) => t !== action.turnId),
+        unconfirmedTurns: settled.unconfirmedTurns.filter((t) => t !== action.turnId),
+      }
+    }
     case 'reset':
       return initialChatState
   }
@@ -360,6 +443,7 @@ function queuedItem(queued: QueuedMessage): ChatItem {
     unprompted: false,
     imageIds: [],
     assetIds: [],
+    heardChars: null,
   }
 }
 
