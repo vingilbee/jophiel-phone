@@ -78,6 +78,15 @@ export interface SenseFrame {
 
 export type ClientFrame = RunFrame | SenseFrame | { type: 'stop'; conversation_id: string | null }
 
+/**
+ * The backend's `created_at` is stored without a time zone and serialized without an offset
+ * ("2026-11-21T07:17:00"), though it is UTC; JavaScript would read that as the phone's local time.
+ * Times with an offset (`written_at`, `seen_at`, the phone's own) pass through unchanged.
+ */
+export function serverTime(iso: string): string {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`
+}
+
 /** Old stored replies may still carry sticker markers; they are cut out, never shown. */
 export const STICKER_MARKER = /\[\[sticker:[a-z0-9-]+\]\]/g
 

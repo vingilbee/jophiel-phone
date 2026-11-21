@@ -31,7 +31,14 @@ Push is compiled in only when `google-services.json` is in this folder (it's git
 1. Create a Firebase project → add an Android app with package `com.jophiel.app` → download
    `google-services.json` here.
 2. Give the backend a service account for FCM HTTP v1 (backend side).
-3. Rebuild: `bun run android`.
+3. Regenerate the native project and rebuild (a plain rebuild reuses the old `android/` folder,
+   which has no Firebase in it):
+   ```sh
+   bunx expo prebuild --platform android --clean
+   bun run android
+   ```
+   Skipping this gives "No Firebase App '[DEFAULT]'" in older builds; now the app just runs without
+   push and logs a warning saying to rebuild.
 
 Without the file the app works; it just doesn't show notification settings or the Setup step.
 

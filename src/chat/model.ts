@@ -1,4 +1,4 @@
-import { stripStickers, type MessageStatus, type ServerFrame, type StoredMessage } from './frames'
+import { serverTime, stripStickers, type MessageStatus, type ServerFrame, type StoredMessage } from './frames'
 
 /**
  * 🕓 written, not yet saved · ✓ saved by the backend · ✓✓ her chat worker picked it up ·
@@ -97,7 +97,9 @@ export function arrivedLate(writtenAt: string | null | undefined, savedAt: strin
 
 export function fromStored(message: StoredMessage, seenIds: ReadonlySet<string> = new Set()): ChatItem {
   const isUser = message.role === 'user'
-  const at = (isUser && message.written_at) || message.created_at
+  const createdAt = serverTime(message.created_at)
+  const writtenAt = message.written_at ? serverTime(message.written_at) : null
+  const at = (isUser && writtenAt) || createdAt
   return {
     key: `m:${message.id}`,
     id: message.id,
@@ -105,7 +107,7 @@ export function fromStored(message: StoredMessage, seenIds: ReadonlySet<string> 
     role: message.role,
     text: message.content,
     at,
-    arrivedAt: isUser ? arrivedLate(message.written_at, message.created_at) : null,
+    arrivedAt: isUser ? arrivedLate(writtenAt, createdAt) : null,
     tick: isUser ? (message.seen_at || seenIds.has(message.id) ? 'seen' : 'saved') : null,
     status: message.status,
     streaming: false,
