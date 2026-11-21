@@ -1,3 +1,5 @@
+import { jsClock, type Clock, type TimerHandle } from './clock'
+
 /**
  * Gapless playback of streamed PCM, with instant cancellation for barge-in.
  *
@@ -18,6 +20,8 @@ export interface PlaybackNative {
   playedFrames: () => number
   level: () => number
   onDrained: (listener: () => void) => { remove: () => void }
+  /** Phone (phase 5): the clock for the done backstop; the native one in the app (./timers). */
+  clock?: Clock
 }
 
 export interface PcmPlayer {
@@ -82,7 +86,8 @@ export function createPcmPlayer(native: PlaybackNative): PcmPlayer {
   type Segment = { textStart: number; textEnd: number; startAt: number | null; endAt: number }
   let segments: Segment[] = []
   let current: Segment | null = null
-  let poll: ReturnType<typeof setInterval> | null = null
+  const clock = native.clock ?? jsClock()
+  let poll: TimerHandle | null = null
   let closed = false
 
   const isPlaying = () => cursor > 0 && cursor > native.playedFrames()
@@ -91,9 +96,18 @@ export function createPcmPlayer(native: PlaybackNative): PcmPlayer {
     if (isPlaying()) return
     const resolvers = doneResolvers
     doneResolvers = []
-    if (poll) clearInterval(poll)
+    if (poll !== null) clock.clearTimeout(poll)
     poll = null
     resolvers.forEach((r) => r())
+  }
+
+  // Repeats while someone waits; a chain of timeouts, since the native clock has no interval.
+  const schedulePoll = () => {
+    poll = clock.setTimeout(() => {
+      poll = null
+      settle()
+      if (doneResolvers.length > 0 && poll === null) schedulePoll()
+    }, DONE_POLL_MS)
   }
 
   const drained = native.onDrained(settle)
@@ -196,7 +210,7 @@ export function createPcmPlayer(native: PlaybackNative): PcmPlayer {
 
     waitUntilDone() {
       if (!isPlaying()) return Promise.resolve()
-      poll ??= setInterval(settle, DONE_POLL_MS)
+      if (poll === null) schedulePoll()
       return new Promise<void>((resolve) => doneResolvers.push(resolve))
     },
 

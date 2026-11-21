@@ -2,6 +2,8 @@ import { fetchMe } from '@/api/auth'
 import { notifyUnauthorized, wsUrl } from '@/api/client'
 import { getToken } from '@/auth/token'
 import { reconnectDelay } from '@/connection/state'
+// Phase 5: ack and reconnect timers run on the native clock, so a call's socket recovers in the background.
+import { clearTimeout, setTimeout } from '@/voice/timers'
 import { parseFrame, type ClientFrame, type SenseFrame, type ServerFrame } from './frames'
 import type { QueuedMessage } from './model'
 import { ACK_TIMEOUT_MS, addStrike, pickNextSend, type InFlight } from './queue'

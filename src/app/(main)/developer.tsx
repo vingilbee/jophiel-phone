@@ -13,6 +13,7 @@ import { CAPTURE_SAMPLE_RATE, type MicCapture } from '@/voice/capture'
 import { echoVerdict, sustainedLevel, testSignal, type EchoResult } from '@/voice/echoTest'
 import type { PcmPlayer } from '@/voice/player'
 import { replyClip } from '@/voice/replyClip'
+import { clearTimeout as clearNativeTimeout, setTimeout as setNativeTimeout, type TimerHandle } from '@/voice/timers'
 import { DEFAULT_TUNING, getTuning, resetTuning, updateTuning, useTuning, type VoiceTuning } from '@/voice/tuning'
 import { createVad } from '@/voice/vad'
 import { useVoice } from '@/voice/VoiceProvider'
@@ -289,12 +290,72 @@ function DeveloperScreen() {
           onValueChange={(buttonOnlyOnSpeaker) => updateTuning({ buttonOnlyOnSpeaker })}
         />
 
+        <SectionHeader title="Background calls" />
+        <AppText role="bodySmall" color="onSurfaceVariant" style={styles.note}>
+          Shorten these to try the limits. They apply only with the app in the background.
+        </AppText>
+        <Stepper label="Quiet limit (ms)" field="backgroundQuietMs" step={60_000} digits={0} min={60_000} tuning={tuning} />
+        <Stepper label="No-connection limit (ms)" field="backgroundOfflineMs" step={15_000} digits={0} min={15_000} tuning={tuning} />
+        <ClockTest />
+
         <View style={[styles.buttons, styles.footer]}>
           <Button label="Reset" variant="text" icon="restore" onPress={() => resetTuning()} />
           <Button label="Copy" variant="tonal" icon="content-copy" onPress={copy} />
         </View>
       </ScrollView>
       <Snackbar message={snack} onDismiss={() => setSnack(null)} />
+    </View>
+  )
+}
+
+const CLOCK_TICK_MS = 5_000
+
+/**
+ * Phase 5: the native clock keeps firing with the screen off. Start it, lock the phone for a while,
+ * come back: the tick count should match the time that passed.
+ */
+function ClockTest() {
+  const [run, setRun] = useState<{ startedAt: number; ticks: number; lastAt: number } | null>(null)
+  const timer = useRef<TimerHandle | null>(null)
+
+  const stop = useCallback(() => {
+    clearNativeTimeout(timer.current)
+    timer.current = null
+    setRun(null)
+  }, [])
+
+  const start = useCallback(() => {
+    const startedAt = Date.now()
+    setRun({ startedAt, ticks: 0, lastAt: startedAt })
+    const tick = () => {
+      timer.current = setNativeTimeout(() => {
+        setRun((current) => (current ? { ...current, ticks: current.ticks + 1, lastAt: Date.now() } : current))
+        tick()
+      }, CLOCK_TICK_MS)
+    }
+    tick()
+  }, [])
+
+  useEffect(() => () => clearNativeTimeout(timer.current), [])
+
+  const expected = run ? Math.floor((Date.now() - run.startedAt) / CLOCK_TICK_MS) : 0
+  return (
+    <View style={styles.block}>
+      <AppText role="bodyMedium" color="onSurfaceVariant">
+        Native clock: one tick every 5 s, also with the screen off.
+      </AppText>
+      {run ? (
+        <AppText role="bodySmall" color="onSurfaceVariant" style={styles.mono} accessibilityLiveRegion="polite">
+          {`ticks ${run.ticks} · expected ~${expected} · last ${new Date(run.lastAt).toLocaleTimeString()}`}
+        </AppText>
+      ) : null}
+      <View style={styles.buttons}>
+        {run ? (
+          <Button label="Stop clock test" variant="tonal" icon="stop" onPress={stop} />
+        ) : (
+          <Button label="Clock test" variant="tonal" icon="timer-outline" onPress={start} />
+        )}
+      </View>
     </View>
   )
 }

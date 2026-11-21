@@ -13,6 +13,9 @@
  *    the socket is back (the web stands down to idle and waits for "Talk now").
  *  - Echo fallbacks from the Developer screen: output-level gating, and button-only interrupt on
  *    the loudspeaker.
+ *  - Phase 5 (marked "Phone, phase 5:"): the call keeps going in the background (setting on), all
+ *    timers on the native clock, 30-min quiet and 2-min offline limits in the background, a phone
+ *    call pauses voice and it listens again by itself afterwards, swiping the app away ends it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
@@ -23,13 +26,17 @@ import {
   createPlayer,
   currentRoute,
   onAudioInterrupted,
+  onCallEnded,
+  onFocusRegained,
   onRouteChanged,
+  showCallEndedNotification,
   startCapture,
   type AudioRoute,
 } from './audio'
 import { CAPTURE_SAMPLE_RATE, type MicCapture } from './capture'
 import { createPcmRingBuffer, type PcmRingBuffer } from './pcmRingBuffer'
 import type { PcmPlayer } from './player'
+import { clearTimeout, setTimeout, type TimerHandle } from './timers'
 import { getTuning, subscribeTuning, type VoiceTuning } from './tuning'
 import { createVad, speechOnsetPosition, type VadConfig } from './vad'
 
@@ -71,7 +78,8 @@ const YIELD_LISTEN_AGAIN_MS = 6000
 /** The safety net for a reply with no audio at all. */
 const AUDIO_GRACE_MS = 4000
 
-type Timer = ReturnType<typeof setTimeout>
+// Phone (phase 5): the call's timers run on the native clock (./timers), so they fire in the background.
+type Timer = TimerHandle
 
 export interface VoiceSession {
   state: VoiceState
@@ -89,6 +97,8 @@ export interface VoiceSession {
   reconnecting: boolean
   /** Phone: where her voice comes out (loudspeaker unless headphones are connected). */
   route: AudioRoute
+  /** Phone, phase 5: a phone call (or another app) has the audio; it listens again once it's back. */
+  pausedForCall: boolean
   error: string | null
   clearError: () => void
   /** Turn voice mode on (needs the mic permission). */
@@ -134,6 +144,8 @@ interface Options {
   conversationId: string | null
   /** Whether the shared socket is open (and its history in); clears a stale "Not connected." */
   connected: boolean
+  /** Phone, phase 5: leaving the app keeps the call going (Settings → Voice). Read when you leave. */
+  keepInBackground: boolean
   /** A reply was cut off after the user heard `heardChars` of its text. */
   onHeard?: (turnId: string, heardChars: number) => void
   socket: {
@@ -188,6 +200,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
   const [muted, updateMuted] = useState(false)
   const [reconnecting, updateReconnecting] = useState(false)
   const [route, setRoute] = useState<AudioRoute>('none')
+  const [pausedForCall, updatePausedForCall] = useState(false)
   const mutedRef = useRef(false)
   const enablingRef = useRef(false)
   const reconnectingRef = useRef(false)
@@ -233,11 +246,65 @@ export function useVoiceSession(opts: Options): VoiceSession {
   // when it ends without any). See voice_latency.py.
   const vadEndRef = useRef<{ speechLastActive: number; vadEndpoint: number } | null>(null)
   const latencyRef = useRef<Omit<VoiceLatencyReport, 'outcome'> | null>(null)
+  // Phone, phase 5: the app is in the background; the limits that apply only there.
+  const backgroundRef = useRef(AppState.currentState === 'background')
+  const quietTimerRef = useRef<Timer | null>(null)
+  const offlineTimerRef = useRef<Timer | null>(null)
+  // Phone, phase 5: paused for a phone call, and whether you had muted before it.
+  const pausedRef = useRef(false)
+  const mutedBeforePauseRef = useRef(false)
+  // Phone, phase 5: `leave` is defined further down; the background limits end the call through it.
+  const leaveRef = useRef<(message?: string) => void>(() => {})
 
   const setReconnecting = useCallback((next: boolean) => {
     reconnectingRef.current = next
     updateReconnecting(next)
   }, [])
+
+  const setPausedForCall = useCallback((next: boolean) => {
+    pausedRef.current = next
+    updatePausedForCall(next)
+  }, [])
+
+  // Phone, phase 5: the background limits.
+  const clearQuietTimer = useCallback(() => {
+    clearTimeout(quietTimerRef.current)
+    quietTimerRef.current = null
+  }, [])
+
+  const clearOfflineTimer = useCallback(() => {
+    clearTimeout(offlineTimerRef.current)
+    offlineTimerRef.current = null
+  }, [])
+
+  /** The call ended by itself in the background: say why on the notification shade. */
+  const endInBackground = useCallback((message: string) => {
+    leaveRef.current(message)
+    showCallEndedNotification(message)
+  }, [])
+
+  /** In the background, (re)start the clock on your silence. Her nudges don't reset it. */
+  const armQuietTimer = useCallback(() => {
+    clearQuietTimer()
+    if (!backgroundRef.current || stateRef.current === 'off') return
+    const ms = getTuning().backgroundQuietMs
+    quietTimerRef.current = setTimeout(() => {
+      quietTimerRef.current = null
+      if (!backgroundRef.current || stateRef.current === 'off') return
+      const minutes = Math.max(1, Math.round(ms / 60_000))
+      endInBackground(`Call ended after ${minutes} min of quiet.`)
+    }, ms)
+  }, [clearQuietTimer, endInBackground])
+
+  /** In the background, a connection that stays down this long ends the call. */
+  const armOfflineTimer = useCallback(() => {
+    if (!backgroundRef.current || !reconnectingRef.current || offlineTimerRef.current !== null) return
+    offlineTimerRef.current = setTimeout(() => {
+      offlineTimerRef.current = null
+      if (!backgroundRef.current || !reconnectingRef.current || stateRef.current === 'off') return
+      endInBackground("Call ended: couldn't reach Jophiel.")
+    }, getTuning().backgroundOfflineMs)
+  }, [endInBackground])
 
   const reportLatency = useCallback((outcome: VoiceLatencyReport['outcome']) => {
     const trace = latencyRef.current
@@ -642,6 +709,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
       if (__DEV__) console.debug(`[vad] ${e} in ${phase}`)
 
       if (e === 'speech-start') {
+        // Phone, phase 5: your speech restarts the background quiet clock.
+        armQuietTimer()
         // Barge-in: talking over the assistant holds it immediately.
         if (phase === 'speaking' || phase === 'thinking') {
           // Phone, echo fallback 3: on the loudspeaker, only the Interrupt button cuts in.
@@ -664,7 +733,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
         void finishUtterance()
       }
     },
-    [endHold, finishUtterance, startHold],
+    [armQuietTimer, endHold, finishUtterance, startHold],
   )
 
   const enable = useCallback(async () => {
@@ -674,6 +743,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
     mutedRef.current = false
     updateMuted(false)
     setReconnecting(false)
+    setPausedForCall(false)
     setError(null)
     try {
       if (!audioAvailable) throw Object.assign(new Error('no audio module'), { code: 'ERR_NO_AUDIO_MODULE' })
@@ -690,6 +760,12 @@ export function useVoiceSession(opts: Options): VoiceSession {
       setRoute(routeRef.current)
       setPhase('idle')
       beginUtterance()
+      // Phone, phase 5: live only after you'd left (the mic opened late), so the leaving handler
+      // saw no call: start the background limits now. (VoiceProvider ends it if it can't stay.)
+      if (backgroundRef.current) {
+        armQuietTimer()
+        armOfflineTimer()
+      }
     } catch (e) {
       if (epochRef.current !== enableEpoch) return
       const code = errorCode(e)
@@ -710,7 +786,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
     } finally {
       enablingRef.current = false
     }
-  }, [beginUtterance, handleFrame, handleVad, setPhase, setReconnecting])
+  }, [armOfflineTimer, armQuietTimer, beginUtterance, handleFrame, handleVad, setPausedForCall, setPhase, setReconnecting])
 
   /** Release the mic and the player, back to 'off'. */
   const tearDown = useCallback(() => {
@@ -726,8 +802,11 @@ export function useVoiceSession(opts: Options): VoiceSession {
     mutedRef.current = false
     updateMuted(false)
     setReconnecting(false)
+    setPausedForCall(false)
+    clearQuietTimer()
+    clearOfflineTimer()
     setPhase('off')
-  }, [setPhase, setReconnecting])
+  }, [clearOfflineTimer, clearQuietTimer, setPausedForCall, setPhase, setReconnecting])
 
   const disable = useCallback(() => {
     clearHold()
@@ -755,6 +834,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
     tearDown()
     if (message) setError(message)
   }, [clearAudioGraceTimer, clearHold, clearTimer, reportHeardNow, tearDown])
+  leaveRef.current = leave
 
   /**
    * Phone: the socket closed mid-call. The reply being spoken is lost (the server treats it as cut
@@ -771,7 +851,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
     vadEndRef.current = null
     setReconnecting(true)
     setPhase('idle')
-  }, [clearAudioGraceTimer, clearHold, clearTimer, setPhase, setReconnecting])
+    armOfflineTimer()
+  }, [armOfflineTimer, clearAudioGraceTimer, clearHold, clearTimer, setPhase, setReconnecting])
 
   const pushToTalk = useCallback(() => {
     if (stateRef.current === 'idle') beginUtterance()
@@ -792,7 +873,17 @@ export function useVoiceSession(opts: Options): VoiceSession {
   }, [endHold, finishUtterance, setPhase])
 
   const setMuted = useCallback((next: boolean) => {
-    if (stateRef.current === 'off' || mutedRef.current === next) return
+    if (stateRef.current === 'off') return
+    // Phone, phase 5: paused for a phone call, the mic is muted already. Muting now means it stays
+    // muted when the call ends; unmuting ends the pause.
+    if (pausedRef.current) {
+      if (next) {
+        mutedBeforePauseRef.current = true
+        return
+      }
+      setPausedForCall(false)
+    }
+    if (mutedRef.current === next) return
     mutedRef.current = next
     updateMuted(next)
     captureRef.current?.setMuted(next)
@@ -811,7 +902,44 @@ export function useVoiceSession(opts: Options): VoiceSession {
     } else if (stateRef.current === 'idle') {
       beginUtterance()
     }
-  }, [beginUtterance, clearHold, endTurn, resumeAfterHold])
+  }, [beginUtterance, clearHold, endTurn, resumeAfterHold, setPausedForCall])
+
+  /**
+   * Phone, phase 5: a phone call or another app took the audio. Like leaving in phase 4 (her audio
+   * stops, what you heard is reported, the text finishes in the chat), but the call stays open with
+   * the mic muted, and listens again by itself once the audio comes back.
+   */
+  const pauseForFocus = useCallback(() => {
+    if (stateRef.current === 'off' || pausedRef.current) return
+    mutedBeforePauseRef.current = mutedRef.current
+    setPausedForCall(true)
+    if (playerRef.current?.playing) reportHeardNow()
+    clearHold()
+    epochRef.current += 1
+    clearTimer()
+    clearAudioGraceTimer()
+    optsRef.current.socket.leave()
+    playerRef.current?.stop()
+    latencyRef.current = null
+    vadEndRef.current = null
+    mutedRef.current = true
+    updateMuted(true)
+    captureRef.current?.setMuted(true)
+    vadRef.current?.reset()
+    ringRef.current?.clear()
+    micLevelRef.current = 0
+    setPhase('idle')
+  }, [clearAudioGraceTimer, clearHold, clearTimer, reportHeardNow, setPausedForCall, setPhase])
+
+  /** Phone, phase 5: the audio is back (the phone call ended): listen again, unless you had muted. */
+  const resumeAfterFocus = useCallback(() => {
+    if (!pausedRef.current) return
+    if (stateRef.current === 'off' || mutedBeforePauseRef.current) {
+      setPausedForCall(false)
+      return
+    }
+    setMuted(false)
+  }, [setMuted, setPausedForCall])
 
   const pauseForText = useCallback(() => {
     if (stateRef.current === 'off') return
@@ -866,6 +994,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
   const beginUnpromptedSpeech = useCallback(() => {
     const phase = stateRef.current
     if (phase === 'off' || holdRef.current) return
+    // Phone, phase 5: a phone call has the audio; her nudge shows as text.
+    if (pausedRef.current) return
     if (phase === 'listening') {
       if (speechDetectedRef.current || vadRef.current?.speaking) return
       clearTimer()
@@ -890,6 +1020,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
       if (stateRef.current === 'listening' && !holdRef.current) return
       // Phone: while reconnecting nothing is hers to play.
       if (reconnectingRef.current) return
+      // Phone, phase 5: nor during a phone call.
+      if (pausedRef.current) return
       audioArrivedRef.current = true
       clearAudioGraceTimer()
       // 'thinking' is a reply to something we asked. 'idle' can only be the assistant speaking
@@ -937,8 +1069,9 @@ export function useVoiceSession(opts: Options): VoiceSession {
   useEffect(() => {
     if (!opts.connected || !reconnectingRef.current) return
     setReconnecting(false)
+    clearOfflineTimer()
     if (stateRef.current === 'idle' && !mutedRef.current) beginUtterance()
-  }, [opts.connected, beginUtterance, setReconnecting])
+  }, [opts.connected, beginUtterance, clearOfflineTimer, setReconnecting])
 
   // Phone: tuning from the Developer screen reaches a call in progress.
   useEffect(
@@ -952,30 +1085,56 @@ export function useVoiceSession(opts: Options): VoiceSession {
     [applyPhaseTuning],
   )
 
-  // Phone: the web recovers a suspended mic on `visibilitychange`; on the phone leaving the app
-  // ends voice (background listening is phase 5). Her reply finishes as text.
+  // Phone, phase 5: the web recovers a suspended mic on `visibilitychange`. On the phone the call
+  // keeps going in the background (the call service keeps the mic), under the background limits;
+  // with the setting off, leaving ends voice as in phase 4 and her reply finishes as text.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'background') leave()
+      if (next === 'background') {
+        backgroundRef.current = true
+        if (stateRef.current === 'off') return
+        if (!optsRef.current.keepInBackground) {
+          leave()
+          return
+        }
+        armQuietTimer()
+        armOfflineTimer()
+      } else if (next === 'active') {
+        backgroundRef.current = false
+        clearQuietTimer()
+        clearOfflineTimer()
+      }
     })
     return () => subscription.remove()
-  }, [leave])
+  }, [armOfflineTimer, armQuietTimer, clearOfflineTimer, clearQuietTimer, leave])
 
-  // Phone: a call or another app took the audio, or the mic died: stand down, same as an error.
+  // Phone: a call or another app took the audio (phase 5: pause, listen again when it's back), or the
+  // mic died (stand down, same as an error).
   useEffect(() => {
     const interrupted = onAudioInterrupted((reason) => {
       if (stateRef.current === 'off') return
-      leave(reason === 'focus_lost' ? 'Voice ended: another app took the audio.' : 'Voice ended: the microphone stopped.')
+      if (reason === 'focus_lost') {
+        pauseForFocus()
+        return
+      }
+      const message = 'Voice ended: the microphone stopped.'
+      leave(message)
+      if (backgroundRef.current) showCallEndedNotification(message)
     })
+    const regained = onFocusRegained(() => resumeAfterFocus())
+    // Phone, phase 5: swiped away from recents ends the call; her reply finishes as text.
+    const swiped = onCallEnded(() => leave())
     const routed = onRouteChanged((next) => {
       routeRef.current = next
       setRoute(next)
     })
     return () => {
       interrupted.remove()
+      regained.remove()
+      swiped.remove()
       routed.remove()
     }
-  }, [leave])
+  }, [leave, pauseForFocus, resumeAfterFocus])
 
   return {
     state,
@@ -986,6 +1145,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
     wakeWordAvailable: false,
     reconnecting,
     route,
+    pausedForCall,
     error,
     clearError,
     enable,

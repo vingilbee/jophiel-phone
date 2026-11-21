@@ -28,7 +28,14 @@ export interface VoiceTuning {
   echoGateRatio: number
   /** Echo fallback 3: on the loudspeaker, no spoken barge-in (Interrupt button only). */
   buttonOnlyOnSpeaker: boolean
+  /** Phase 5: in the background, the call ends after this long without your speech (30 min). */
+  backgroundQuietMs: number
+  /** Phase 5: in the background, the call ends after this long without a connection (2 min). */
+  backgroundOfflineMs: number
 }
+
+export const BACKGROUND_QUIET_MS = 30 * 60_000
+export const BACKGROUND_OFFLINE_MS = 2 * 60_000
 
 export const DEFAULT_TUNING: VoiceTuning = {
   speechRatio: DEFAULT_VAD.speechRatio,
@@ -40,6 +47,8 @@ export const DEFAULT_TUNING: VoiceTuning = {
   outputGating: false,
   echoGateRatio: 1.0,
   buttonOnlyOnSpeaker: false,
+  backgroundQuietMs: BACKGROUND_QUIET_MS,
+  backgroundOfflineMs: BACKGROUND_OFFLINE_MS,
 }
 
 const KEY = 'jophiel.voice-tuning'

@@ -6,9 +6,10 @@ import { AppText } from './AppText'
 import { Icon, type IconName } from './Controls'
 import { VoiceOrb } from './VoiceOrb'
 
-/** The state in words, as on the web (plus the phone's "Reconnecting…"). */
+/** The state in words, as on the web (plus the phone's "Reconnecting…" and "Paused for a call"). */
 export function voiceLabel(session: VoiceSession): string {
   if (session.reconnecting) return 'Reconnecting…'
+  if (session.pausedForCall) return 'Paused for a call'
   if (session.muted) return session.state === 'speaking' ? 'Mic muted · Jophiel is speaking' : 'Mic muted'
   switch (session.state) {
     case 'off':

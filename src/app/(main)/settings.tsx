@@ -8,12 +8,12 @@ import { useSession } from '@/auth/session'
 import { useChat } from '@/chat/ChatProvider'
 import { dayLabel, timeLabel } from '@/chat/format'
 import { AppText } from '@/components/AppText'
-import { IconButton, ListRow, SectionHeader } from '@/components/Controls'
+import { IconButton, ListRow, SectionHeader, SwitchRow } from '@/components/Controls'
 import type { ConnectionPhase } from '@/connection/state'
 import { pushEnabled } from '@/push/config'
 import { openAppSettings, openNotificationSettings } from '@/setup/permissions'
 import { usePermissions } from '@/setup/usePermissions'
-import { useSettings } from '@/settings/store'
+import { updateSettings, useSettings } from '@/settings/store'
 import { space, useColors } from '@/theme'
 
 const PHASE_LABEL: Record<ConnectionPhase, string> = {
@@ -70,6 +70,18 @@ export default function Settings() {
         <AppText role="bodySmall" color="onSurfaceVariant" style={styles.note}>
           To use another server, log out and sign in with its address.
         </AppText>
+
+        <SectionHeader title="Voice" />
+        <SwitchRow
+          title="Keep listening in the background"
+          supporting={
+            settings.keepListeningInBackground
+              ? 'A call keeps going when you leave the app or lock the screen. It ends after 30 min without you speaking.'
+              : 'Leaving the app ends the call; her reply finishes as text.'
+          }
+          value={settings.keepListeningInBackground}
+          onValueChange={(keepListeningInBackground) => updateSettings({ keepListeningInBackground })}
+        />
 
         <SectionHeader title="Account" />
         <ListRow icon="account-outline" title={user?.name ?? 'Signed in'} supporting={user?.email} />

@@ -17,7 +17,22 @@ export type JophielAudioEvents = {
   onInterrupted: (event: { reason: 'focus_lost' | 'mic_lost' }) => void
   /** Output moved (headphones plugged in or out). */
   onRouteChanged: (event: { route: AudioRoute }) => void
+  /** Phase 5: the audio came back after `focus_lost` (the phone call ended); the mic is open again. */
+  onFocusRegained: () => void
+  /** Phase 5: a native timer (`setTimer`) fired. */
+  onTimer: (event: { id: number }) => void
+  /** Phase 5: pressed on the call notification, or the headset button (`button`). */
+  onCallAction: (event: { action: CallAction }) => void
+  /** Phase 5: the call has to end (`swiped`: the app was swiped away from recents). */
+  onCallEnded: (event: { reason: 'swiped' }) => void
+  /**
+   * Phase 5: Android promoted the call service to the foreground (`running: true`), refused to, or
+   * it stopped (`false`). `startCallService` only submits the request; this is the answer.
+   */
+  onCallServiceState: (event: { running: boolean }) => void
 }
+
+export type CallAction = 'interrupt' | 'talk' | 'mute' | 'unmute' | 'end' | 'button'
 
 declare class JophielAudioModule extends NativeModule<JophielAudioEvents> {
   /** Opens the mic and the voice session. Resolves with the capture sample rate (16000). */
@@ -42,6 +57,21 @@ declare class JophielAudioModule extends NativeModule<JophielAudioEvents> {
   route(): AudioRoute
   /** Stops capture and playback and gives the audio mode and focus back to Android. */
   endSession(): void
+  /** Phase 5: fires `onTimer({ id })` once after `ms`, also with the app in the background. */
+  setTimer(id: number, ms: number): void
+  clearTimer(id: number): void
+  /**
+   * Phase 5: the foreground service that keeps a call going in the background. Start it while the
+   * app is visible (Android 14 refuses otherwise). False if the request itself was refused; whether
+   * Android then promotes it comes as `onCallServiceState`.
+   */
+  startCallService(): boolean
+  stopCallService(): void
+  isCallServiceRunning(): boolean
+  /** The call notification's text, its context action (null = none) and the Mute/Unmute action. */
+  updateCallNotification(text: string, primary: 'interrupt' | 'talk' | null, muted: boolean): void
+  /** A note after the call ended by itself in the background. */
+  showCallEndedNotification(text: string): void
 }
 
 /** Null in a build made before this module existed: rebuild with `bunx expo run:android`. */
