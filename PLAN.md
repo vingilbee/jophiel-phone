@@ -50,7 +50,7 @@ needs native audio capture + playback and speaks the same protocol as the web ap
 ## Build order
 
 Each phase ends with something usable on the phone. Phases 0–3 are specified in
-detail in `PLAN_PHASE_0-3.md`.
+detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`.
 
 | # | Phase | Phone side | Backend side (`../app`) | Size |
 |---|---|---|---|---|
@@ -59,7 +59,7 @@ detail in `PLAN_PHASE_0-3.md`.
 | 2 | **Notifications** | Firebase push; tap a notification → opens the chat | Register phone devices (FCM token); push what she says when you aren't present anywhere and she didn't say it aloud | 2–3 days |
 | 3 | **Settings + Setup** | Both screens, settings stored on the phone, permission steps | none | 2–3 days |
 | — | **Real-phone pass (S21)** | Tailscale + HTTPS, release APK, Samsung battery, notifications on the real phone | none | 1–2 days |
-| 4 | **Voice, app open** | Native (Kotlin) mic capture with Android's echo cancellation, PCM playback, VAD, push-to-talk; voice mode on Chat | none (reuses the WS voice protocol) | 4–7 days |
+| 4 | **Voice, app open** | Native (Kotlin) mic capture with Android's echo cancellation, PCM playback, VAD, push-to-talk; voice mode on Chat | none (reuses the WS voice protocol) | 6–9 days |
 | 5 | **Voice in the background** | Foreground service ("Jophiel is listening" notification), AirPods/speaker routing, Samsung battery setup, survives screen lock | none | 4–6 days |
 | 6 | **Location + Maps** | Report location as a sense; geofences for named places; open Google Maps with navigation | Tools: `get_user_location`, `search_places`, `get_route`, `open_navigation`; places table; Google Maps API key | 4–6 days |
 | 7 | **Chibi in the app** | Rive animation driven by her state (idle, listening, thinking, talking + lip sync, moods) | Her state/mood in the WS frames if not already there | 3–5 days (art made separately) |

@@ -13,7 +13,10 @@ import { Composer, ConnectionBanner, DateDivider, ThinkingRow } from '@/componen
 import { IconButton } from '@/components/Controls'
 import { JophielMark } from '@/components/Marks'
 import { Snackbar } from '@/components/Snackbar'
+import { VoicePanel, voiceLabel } from '@/components/VoicePanel'
+import { openAppSettings } from '@/setup/permissions'
 import { space, useColors } from '@/theme'
+import { useVoice } from '@/voice/VoiceProvider'
 
 type ListEntry = { kind: 'row'; row: ChatRow } | { kind: 'thinking' }
 
@@ -30,11 +33,14 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const chat = useChat()
+  const voice = useVoice()
+  const { session } = voice
   const token = useBearer()
   const { messageId } = useLocalSearchParams<{ messageId?: string }>()
   const list = useRef<FlatList<ListEntry>>(null)
   const [highlight, setHighlight] = useState<string | null>(null)
   const [snack, setSnack] = useState<string | null>(null)
+  const [micSnack, setMicSnack] = useState<string | null>(null)
 
   // Newest first, for the inverted list (it keeps the conversation anchored to the composer).
   const entries = useMemo<ListEntry[]>(() => {
@@ -59,7 +65,9 @@ export default function ChatScreen() {
     paddingBottom: Math.max(bottomInset, -keyboardHeight.value),
   }))
 
-  const status = chat.replying
+  const status = voice.live
+    ? voiceLabel(session)
+    : chat.replying
     ? 'writing…'
     : chat.thinking
       ? 'thinking…'
@@ -68,6 +76,31 @@ export default function ChatScreen() {
         : chat.phase !== 'connected'
           ? 'connecting…'
           : null
+
+  // Call button: mic permission first (Android's prompt), then the call. Never starts by itself.
+  const startCall = useCallback(() => {
+    void voice.start().then((outcome) => {
+      if (outcome === 'blocked') setMicSnack('Microphone is off for Jophiel. Turn it on in the app settings.')
+      else if (outcome === 'denied') setMicSnack('A voice call needs the microphone.')
+    })
+  }, [voice])
+  const callDisabled = voice.starting || !chat.voiceReady || (!voice.live && (chat.replying || chat.thinking))
+  const dismissMicSnack = useCallback(() => setMicSnack(null), [])
+  // Voice errors share the chat's snackbar; one already shown there isn't repeated.
+  const voiceError = session.error && session.error !== chat.state.error ? session.error : null
+
+  const onSend = useCallback(
+    (text: string) => {
+      // Typing while a call is on: the mic mutes and her spoken reply is dropped (as on the web).
+      if (voice.live) session.pauseForText()
+      chat.send(text)
+    },
+    [voice.live, session, chat],
+  )
+  const onStop = useCallback(() => {
+    if (voice.live && voice.busy) session.interrupt()
+    else chat.stop()
+  }, [voice.live, voice.busy, session, chat])
 
   const onCopied = useCallback(() => setSnack('Copied'), [])
   const dismissSnack = useCallback(() => setSnack(null), [])
@@ -114,10 +147,19 @@ export default function ChatScreen() {
             ) : null}
           </View>
         </View>
+        {voice.available || voice.live ? (
+          voice.live ? (
+            <IconButton icon="phone-hangup" label="End voice call" color={colors.error} onPress={session.disable} />
+          ) : (
+            <IconButton icon="phone" label="Start a voice call" onPress={startCall} disabled={callDisabled} />
+          )
+        ) : null}
         <IconButton icon="cog-outline" label="Settings" onPress={() => router.push('/settings')} />
       </View>
 
       <ConnectionBanner phase={chat.phase} onRetry={chat.retryNow} />
+
+      {voice.live ? <VoicePanel session={session} busy={voice.busy} /> : null}
 
       <View style={styles.thread}>
         {empty ? (
@@ -155,12 +197,25 @@ export default function ChatScreen() {
           durationMs={6000}
           action={{ label: 'OK', onPress: chat.dismissError }}
         />
+        <Snackbar message={voiceError} onDismiss={session.clearError} durationMs={6000} action={{ label: 'OK', onPress: session.clearError }} />
+        <Snackbar
+          message={micSnack}
+          onDismiss={dismissMicSnack}
+          durationMs={6000}
+          action={{
+            label: 'Open settings',
+            onPress: () => {
+              dismissMicSnack()
+              void openAppSettings()
+            },
+          }}
+        />
       </View>
 
       <Composer
-        replying={chat.replying || chat.thinking}
-        onSend={chat.send}
-        onStop={chat.stop}
+        replying={chat.replying || chat.thinking || voice.busy}
+        onSend={onSend}
+        onStop={onStop}
         onTyping={(typing) => chat.setActivity(typing ? 'typing' : 'reading')}
       />
     </Animated.View>

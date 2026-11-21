@@ -7,17 +7,24 @@ import { AppText } from '@/components/AppText'
 import { Button, Icon, type IconName } from '@/components/Controls'
 import { pushEnabled } from '@/push/config'
 import { registerNow } from '@/push/registration'
-import { openAppSettings, openBatterySettings, requestNotificationPermission, showsBatteryStep } from '@/setup/permissions'
+import {
+  openAppSettings,
+  openBatterySettings,
+  requestMicrophonePermission,
+  requestNotificationPermission,
+  showsBatteryStep,
+} from '@/setup/permissions'
 import { usePermissions } from '@/setup/usePermissions'
 import { getSettings, updateSettings } from '@/settings/store'
 import { radius, space, useColors } from '@/theme'
 
-type StepId = 'connection' | 'notifications' | 'battery'
+type StepId = 'connection' | 'notifications' | 'microphone' | 'battery'
 
 function steps(): StepId[] {
   return [
     'connection',
     ...(pushEnabled ? (['notifications'] as const) : []),
+    'microphone',
     ...(showsBatteryStep() ? (['battery'] as const) : []),
   ]
 }
@@ -34,6 +41,9 @@ export default function SetupStep() {
   const current = all[index] ?? 'connection'
   const [permissions, refresh] = usePermissions()
   const [check, setCheck] = useState<Check>('idle')
+  // Android only says "won't ask again" in answer to a request; a later check reads plain "denied".
+  const [micBlocked, setMicBlocked] = useState(false)
+  const microphone = micBlocked && permissions.microphone !== 'granted' ? 'blocked' : permissions.microphone
 
   // Opening Setup once is enough for it to stop opening by itself.
   useEffect(() => {
@@ -66,7 +76,9 @@ export default function SetupStep() {
       ? check === 'ok'
       : current === 'notifications'
         ? permissions.notifications === 'granted'
-        : permissions.battery === 'granted'
+        : current === 'microphone'
+          ? microphone === 'granted'
+          : permissions.battery === 'granted'
 
   let icon: IconName
   let title: string
@@ -103,6 +115,28 @@ export default function SetupStep() {
               }
       if (permissions.notifications === 'blocked') {
         problem = 'Android won\'t ask again. In the app settings, tap Notifications and turn them on.'
+      }
+      break
+    case 'microphone':
+      icon = 'microphone-outline'
+      title = 'Talking with her'
+      body =
+        'For voice calls: tap the phone button in the chat, talk, and she answers aloud. The microphone is only on during a call, never by itself.'
+      action =
+        microphone === 'blocked'
+          ? { label: 'Open app settings', onPress: () => void openAppSettings() }
+          : done
+            ? null
+            : {
+                label: 'Allow the microphone',
+                onPress: () =>
+                  void requestMicrophonePermission().then((result) => {
+                    setMicBlocked(result === 'blocked')
+                    refresh()
+                  }),
+              }
+      if (microphone === 'blocked') {
+        problem = "Android won't ask again. In the app settings, tap Permissions → Microphone and allow it."
       }
       break
     case 'battery':

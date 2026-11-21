@@ -5,6 +5,7 @@ import { reconnectDelay } from '@/connection/state'
 import { parseFrame, type ClientFrame, type SenseFrame, type ServerFrame } from './frames'
 import type { QueuedMessage } from './model'
 import { ACK_TIMEOUT_MS, addStrike, pickNextSend, type InFlight } from './queue'
+import { VoiceChannel } from './voice'
 
 const POLICY_VIOLATION = 1008
 
@@ -16,6 +17,10 @@ export interface ConnectionEvents {
   onOpenChange: (open: boolean) => void
   /** A message ran out of tries (rejected, or never confirmed on a live connection). */
   onSendFailed: (turnId: string) => void
+  /** Open and this socket's history is in: voice can start (it needs the conversation id). */
+  onReadyChange: (ready: boolean) => void
+  /** A voice reply was cut off: settle its bubble now. */
+  onSettleTurn: (turnId: string) => void
 }
 
 export interface ConnectionSource {
@@ -24,6 +29,8 @@ export interface ConnectionSource {
   /** The turn still streaming when the socket dropped, to resume its conversation. */
   resumeTurnId: () => string | null
   sense: () => Omit<SenseFrame, 'type' | 'client'>
+  /** The chat already has this saved message. */
+  knowsMessage: (messageId: string) => boolean
 }
 
 /**
@@ -46,11 +53,27 @@ export class ChatConnection {
   /** Failed tries per message; connection drops don't count. */
   private readonly strikes = new Map<string, number>()
   open = false
+  ready = false
+  /** Voice turns, audio and barge-in on the same socket (see voice.ts). */
+  readonly voice: VoiceChannel
 
   constructor(
     private readonly events: ConnectionEvents,
     private readonly source: ConnectionSource,
-  ) {}
+  ) {
+    this.voice = new VoiceChannel({
+      send: (frame) => this.send(frame),
+      sendBinary: (bytes) => {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false
+        this.ws.send(bytes)
+        return true
+      },
+      ready: () => this.ready,
+      settleTurn: (turnId) => this.events.onSettleTurn(turnId),
+      knowsMessage: (messageId) => this.source.knowsMessage(messageId),
+      conversationId: () => this.source.conversationId(),
+    })
+  }
 
   /** Connect now (app in the foreground), or retry immediately if a backoff is pending. */
   start() {
@@ -76,6 +99,8 @@ export class ChatConnection {
     const ws = this.ws
     this.ws = null
     ws?.close(1000)
+    if (ws) this.voice.handleClose()
+    this.setReady(false)
     this.setOpen(false)
   }
 
@@ -144,6 +169,8 @@ export class ChatConnection {
       this.scheduleReconnect()
       return
     }
+    // Her voice arrives as binary frames of PCM.
+    ws.binaryType = 'arraybuffer'
     this.ws = ws
     const current = () => this.ws === ws && generation === this.generation
 
@@ -157,10 +184,21 @@ export class ChatConnection {
       this.pump()
     }
     ws.onmessage = (event) => {
-      if (!current() || typeof event.data !== 'string') return
+      if (!current()) return
+      if (typeof event.data !== 'string') {
+        if (event.data instanceof ArrayBuffer) this.voice.handleBinary(event.data)
+        return
+      }
       const frame = parseFrame(event.data)
       if (!frame) return
-      if (frame.type === 'history') this.historyReceived = true
+      if (frame.type === 'history') {
+        this.historyReceived = true
+        // Dispatched first, so voice reads the snapshot's conversation id once it's told it's ready.
+        this.events.onFrame(frame)
+        this.setReady(true)
+        queueMicrotask(() => this.pump())
+        return
+      }
       if (frame.type === 'ack') {
         this.strikes.delete(frame.turn_id)
         if (this.inFlight?.turnId === frame.turn_id) {
@@ -168,6 +206,9 @@ export class ChatConnection {
           this.clearAck()
         }
       }
+      // Voice sees every frame first: audio frames are its alone, and so is an error that answers
+      // the utterance it just closed ("Couldn't transcribe that.").
+      if (!this.voice.handleFrame(frame)) return
       // The backend rejects a `run` with an error that names no turn ("Invalid message payload.",
       // "Couldn't save that message."). One arriving while a message waits for its ack is that
       // message's rejection: a strike, then try again. Not her reply failing, so no snackbar.
@@ -180,7 +221,7 @@ export class ChatConnection {
         return
       }
       this.events.onFrame(frame)
-      if (frame.type === 'ack' || frame.type === 'history') queueMicrotask(() => this.pump())
+      if (frame.type === 'ack') queueMicrotask(() => this.pump())
     }
     ws.onerror = () => {
       // onclose follows; it decides what to do.
@@ -189,6 +230,8 @@ export class ChatConnection {
       if (!current()) return
       this.ws = null
       this.clearAck()
+      this.voice.handleClose()
+      this.setReady(false)
       this.setOpen(false)
       if (event.code === POLICY_VIOLATION) {
         // The session was revoked or expired.
@@ -209,6 +252,12 @@ export class ChatConnection {
     this.clearReconnect()
     const delay = reconnectDelay(this.attempt++)
     this.reconnectTimer = setTimeout(() => void this.connect(), delay)
+  }
+
+  private setReady(ready: boolean) {
+    if (this.ready === ready) return
+    this.ready = ready
+    this.events.onReadyChange(ready)
   }
 
   private setOpen(open: boolean) {

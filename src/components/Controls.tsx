@@ -71,11 +71,12 @@ export function IconButton({ icon, label, onPress, color, disabled }: IconButton
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
       disabled={disabled}
       hitSlop={4}
       android_ripple={{ color: colors.ripple, borderless: true, radius: 24 }}
-      style={styles.iconButton}
+      style={[styles.iconButton, disabled && styles.disabled]}
     >
       <Icon name={icon} color={color ?? colors.onSurfaceVariant} />
     </Pressable>
@@ -236,6 +237,7 @@ const styles = StyleSheet.create({
   },
   textButton: { paddingHorizontal: space.md },
   iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  disabled: { opacity: 0.38 },
   field: { gap: 6 },
   input: { minHeight: 56, borderRadius: radius.field, paddingVertical: space.md },
   sectionHeader: { paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.sm },

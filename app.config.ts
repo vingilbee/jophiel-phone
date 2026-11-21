@@ -25,7 +25,8 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: true,
     softwareKeyboardLayoutMode: 'resize',
-    permissions: ['android.permission.POST_NOTIFICATIONS'],
+    // Voice (phase 4): the mic, and the audio routing a voice call needs (loudspeaker / headphones).
+    permissions: ['android.permission.POST_NOTIFICATIONS', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'],
     ...(pushEnabled ? { googleServicesFile } : {}),
   },
   plugins: [

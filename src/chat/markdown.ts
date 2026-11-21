@@ -168,6 +168,31 @@ function findClosing(source: string, marker: string, from: number): number {
   return -1
 }
 
+/** Characters of text these inlines render (what a reader sees, markup excluded). */
+export function inlineLength(inlines: Inline[]): number {
+  let total = 0
+  for (const inline of inlines) {
+    if (inline.kind === 'text' || inline.kind === 'code') total += inline.text.length
+    else total += inlineLength(inline.children)
+  }
+  return total
+}
+
+/**
+ * Characters of text these blocks render, in render order. List markers aren't counted. Used to
+ * fade the unheard end of a spoken reply: the heard part's length, measured on its own parse, is
+ * where the fade starts in the whole message's.
+ */
+export function visibleLength(blocks: Block[]): number {
+  let total = 0
+  for (const block of blocks) {
+    if (block.kind === 'code') total += block.text.length
+    else if (block.kind === 'list') total += block.items.reduce((sum, item) => sum + inlineLength(item), 0)
+    else total += inlineLength(block.inlines)
+  }
+  return total
+}
+
 /** Plain text of a message, for notifications and accessibility. */
 export function plainText(source: string): string {
   return source

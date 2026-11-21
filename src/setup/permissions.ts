@@ -28,6 +28,27 @@ export async function requestNotificationPermission(): Promise<PermissionState> 
   return 'denied'
 }
 
+/** The microphone, for voice calls with her. */
+export async function microphonePermission(): Promise<PermissionState> {
+  try {
+    return (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)) ? 'granted' : 'denied'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** Shows Android's prompt. "blocked" means Android won't ask again: fix it in the app's settings. */
+export async function requestMicrophonePermission(): Promise<PermissionState> {
+  try {
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
+    if (result === PermissionsAndroid.RESULTS.GRANTED) return 'granted'
+    if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return 'blocked'
+    return 'denied'
+  } catch {
+    return 'unknown'
+  }
+}
+
 export function openAppSettings() {
   return Linking.openSettings()
 }

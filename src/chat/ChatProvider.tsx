@@ -6,8 +6,10 @@ import { updateSettings } from '@/settings/store'
 import { clearPresentedNotifications } from '@/push/display'
 import { retryPushRegistration } from '@/push/registration'
 import { ChatConnection } from './connection'
+import type { VoiceState } from './frames'
 import { chatReducer, initialChatState, isReplying, isThinking, visibleItems, type ChatAction, type ChatItem, type ChatState } from './model'
 import { clearQueue, loadQueue, newTurnId, saveQueue } from './queue'
+import type { VoiceChannel } from './voice'
 
 /** After this long in the background the socket closes; push takes over. */
 const BACKGROUND_CLOSE_MS = 30_000
@@ -29,7 +31,25 @@ interface Chat {
   dismissError: () => void
   /** Report what the user is doing (typing / reading), for her sense of the moment. */
   setActivity: (activity: 'idle' | 'reading' | 'typing') => void
+  /** Voice turns and audio on the chat socket. */
+  voice: VoiceChannel
+  /** Connected and the history is in: a voice turn can start. */
+  voiceReady: boolean
+  /** Report the voice call's state (her senses: can she speak aloud here, are you talking). */
+  setVoiceSense: (sense: VoiceSense) => void
+  /** A spoken reply was cut off after you heard `heardChars` of it: fade the rest. */
+  markHeard: (turnId: string, heardChars: number) => void
 }
+
+export interface VoiceSense {
+  /** The mic is open and capturing your turn. */
+  speaking: boolean
+  /** A call is on and the mic isn't muted. */
+  hearingEnabled: boolean
+  voiceState: VoiceState
+}
+
+const VOICE_OFF: VoiceSense = { speaking: false, hearingEnabled: false, voiceState: 'off' }
 
 const ChatContext = createContext<Chat | null>(null)
 
@@ -56,7 +76,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(() => Date.now())
   const appState = useRef<AppStateStatus>((AppState.currentState ?? 'active') as AppStateStatus)
   const activity = useRef<'idle' | 'reading' | 'typing'>('reading')
+  const voiceSense = useRef<VoiceSense>(VOICE_OFF)
   const queueLoaded = useRef(false)
+  const [voiceReady, setVoiceReady] = useState(false)
 
   const connection = useMemo(
     () =>
@@ -64,6 +86,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         {
           onFrame: (frame) => dispatch({ type: 'frame', frame, now: new Date().toISOString() }),
           onSendFailed: (turnId) => dispatch({ type: 'sendFailed', turnId }),
+          onSettleTurn: (turnId) => dispatch({ type: 'settleTurn', turnId }),
+          onReadyChange: setVoiceReady,
           onOpenChange: (isOpen) => {
             setOpen(isOpen)
             if (isOpen) {
@@ -83,10 +107,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           sense: () => ({
             timezone: timezone(),
             route: '/chat',
-            activity: activity.current,
+            activity: voiceSense.current.speaking ? 'speaking' : activity.current,
             visible: appState.current === 'active',
             last_active_at: new Date().toISOString(),
+            hearing_enabled: voiceSense.current.hearingEnabled,
+            wake_armed: false,
+            voice_state: voiceSense.current.voiceState,
           }),
+          knowsMessage: (messageId) => stateRef.current.messages.some((m) => m.id === messageId),
         },
       ),
     [dispatch],
@@ -191,6 +219,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [connection],
   )
 
+  const setVoiceSense = useCallback(
+    (next: VoiceSense) => {
+      const previous = voiceSense.current
+      if (
+        previous.speaking === next.speaking &&
+        previous.hearingEnabled === next.hearingEnabled &&
+        previous.voiceState === next.voiceState
+      ) {
+        return
+      }
+      voiceSense.current = next
+      connection.sendSense()
+    },
+    [connection],
+  )
+  const markHeard = useCallback(
+    (turnId: string, heardChars: number) => dispatch({ type: 'heard', turnId, heardChars }),
+    [dispatch],
+  )
+
   const value = useMemo<Chat>(
     () => ({
       state,
@@ -205,8 +253,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       deleteMessage,
       dismissError,
       setActivity,
+      voice: connection.voice,
+      voiceReady,
+      setVoiceSense,
+      markHeard,
     }),
-    [state, open, downSince, now, everConnected, send, stop, retryNow, retryMessage, deleteMessage, dismissError, setActivity],
+    [
+      state,
+      open,
+      downSince,
+      now,
+      everConnected,
+      send,
+      stop,
+      retryNow,
+      retryMessage,
+      deleteMessage,
+      dismissError,
+      setActivity,
+      connection,
+      voiceReady,
+      setVoiceSense,
+      markHeard,
+    ],
   )
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
