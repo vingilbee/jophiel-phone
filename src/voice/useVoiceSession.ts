@@ -760,6 +760,12 @@ export function useVoiceSession(opts: Options): VoiceSession {
       setRoute(routeRef.current)
       setPhase('idle')
       beginUtterance()
+      // Phone, phase 5: live only after you'd left (the mic opened late), so the leaving handler
+      // saw no call: start the background limits now. (VoiceProvider ends it if it can't stay.)
+      if (backgroundRef.current) {
+        armQuietTimer()
+        armOfflineTimer()
+      }
     } catch (e) {
       if (epochRef.current !== enableEpoch) return
       const code = errorCode(e)
@@ -780,7 +786,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
     } finally {
       enablingRef.current = false
     }
-  }, [beginUtterance, handleFrame, handleVad, setPausedForCall, setPhase, setReconnecting])
+  }, [armOfflineTimer, armQuietTimer, beginUtterance, handleFrame, handleVad, setPausedForCall, setPhase, setReconnecting])
 
   /** Release the mic and the player, back to 'off'. */
   const tearDown = useCallback(() => {
