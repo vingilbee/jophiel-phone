@@ -249,13 +249,30 @@ describe('phone senses controller', () => {
     expect(socket.frames[3]).toEqual({ place: null, observed_at: '2026-11-21T10:31:00.000Z' })
   })
 
-  test('a change sent on a socket is never stamped older than that socket\'s whole-state frame', () => {
+  test('a reading older than the reconnect snapshot is dropped, not sent as if it were newer', () => {
+    // Snapshot at 10:01 reads 64 %; a delayed callback then reports 63 % seen at 10:00.
     const { senses, fake, socket, advance } = setup({ battery: 64 })
     senses.setLive(true)
     advance(60_000)
     socket.link.sendSense()
-    fake.emit({ battery: 63 }, T0) // seen before the snapshot went out
-    expect(socket.frames[1]).toEqual({ battery: 63, observed_at: '2026-11-21T10:01:00.000Z' })
+    expect(socket.frames[0]).toMatchObject({ battery: 64, observed_at: '2026-11-21T10:01:00.000Z' })
+    fake.emit({ battery: 63 }, T0)
+    expect(socket.frames).toHaveLength(1)
+    expect(senses.report(false)).toBeNull()
+    // A newer reading still goes out, with its own time.
+    advance(60_000)
+    fake.emit({ battery: 62 }, T0 + 2 * 60_000)
+    expect(socket.frames[1]).toEqual({ battery: 62, observed_at: '2026-11-21T10:02:00.000Z' })
+  })
+
+  test('an unchanged value re-read by the snapshot still counts as confirmed then', () => {
+    const { senses, fake, socket, advance } = setup({ battery: 64 })
+    senses.setLive(true) // 64 % seen at 10:00
+    fake.emit({ battery: 64 }, T0)
+    advance(60_000)
+    socket.link.sendSense() // re-read at 10:01, same value
+    fake.emit({ battery: 63 }, T0 + 30_000) // seen at 10:00:30, before that re-read
+    expect(socket.frames).toHaveLength(1)
   })
 
   test('Places back on: the place from before the switch-off is not sent again', () => {

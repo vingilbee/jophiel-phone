@@ -37,8 +37,6 @@ export class PhoneSenses {
   private seenAt: Partial<Record<PhoneField, number>> = {}
   /** What this socket was sent. */
   private sent: Known = {}
-  /** `observed_at` of this socket's whole-state frame: nothing later on it may claim to be older. */
-  private syncedAt = 0
   private live = false
   private link: SensesLink | null = null
   private switches: SenseSwitches
@@ -129,7 +127,6 @@ export class PhoneSenses {
     const now = this.now()
     let at = 0
     for (const field of Object.keys(fields) as PhoneField[]) at = Math.max(at, this.seenAt[field] ?? now)
-    at = Math.max(at, this.syncedAt)
     return { ...fields, observed_at: new Date(Math.min(at, now)).toISOString() }
   }
 
@@ -138,9 +135,7 @@ export class PhoneSenses {
     const fields = fieldsOf(report)
     this.sent = full ? { ...fields } : { ...this.sent, ...fields }
     const parsed = report.observed_at ? Date.parse(report.observed_at) : Number.NaN
-    const at = Number.isFinite(parsed) ? parsed : this.now()
-    if (full) this.syncedAt = at
-    this.native?.noteSent(fields, at)
+    this.native?.noteSent(fields, Number.isFinite(parsed) ? parsed : this.now())
   }
 
   /** Sign-out: off, and nothing about this account kept. */
@@ -149,7 +144,6 @@ export class PhoneSenses {
     this.known = {}
     this.seenAt = {}
     this.sent = {}
-    this.syncedAt = 0
   }
 
   /** Read everything now. Place and motion missing from the snapshot are unknown, not "as before". */
@@ -164,14 +158,25 @@ export class PhoneSenses {
     this.ingest(raw, this.now())
   }
 
-  /** Take in native values. True when one of them changed. */
+  /**
+   * Take in native values seen at `at`. True when one of them changed. An observation older than
+   * the field's latest (a callback arriving after a snapshot re-read it, or after its switch
+   * changed) is dropped: sent with its own time the server would ignore it anyway, and sent with a
+   * newer one it would replace a newer reading.
+   */
   private ingest(raw: Record<string, unknown>, at: number): boolean {
     const fields = checkFields(raw)
     let changed = false
     for (const field of PHONE_FIELDS) {
       if (!(field in fields)) continue
+      const seen = this.seenAt[field]
+      if (seen !== undefined && at < seen) continue
       const value = fields[field]
-      if (this.known[field] === value) continue
+      if (this.known[field] === value) {
+        // Re-confirmed: later stragglers must be newer than this.
+        this.seenAt[field] = at
+        continue
+      }
       ;(this.known as Record<string, unknown>)[field] = value
       this.seenAt[field] = at
       changed = true
