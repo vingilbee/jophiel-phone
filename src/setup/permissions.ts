@@ -88,3 +88,101 @@ export async function openBatterySettings() {
     await Linking.openSettings()
   }
 }
+
+// ---- Phase 6: phone senses ----
+
+const sdk = Platform.OS === 'android' ? Number(Platform.Version) : 0
+/** "Allow all the time" is its own permission from Android 10. */
+export const hasBackgroundLocationPermission = sdk >= 29
+/** Physical activity is a runtime permission from Android 10. */
+export const hasActivityPermission = sdk >= 29
+/** Nearby devices (Bluetooth connect) is a runtime permission from Android 12. */
+export const hasNearbyPermission = sdk >= 31
+
+const P = PermissionsAndroid.PERMISSIONS
+
+async function check(permission: (typeof P)[keyof typeof P]): Promise<PermissionState> {
+  try {
+    return (await PermissionsAndroid.check(permission)) ? 'granted' : 'denied'
+  } catch {
+    return 'unknown'
+  }
+}
+
+function answer(result: string | undefined): PermissionState {
+  if (result === PermissionsAndroid.RESULTS.GRANTED) return 'granted'
+  if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return 'blocked'
+  return 'denied'
+}
+
+/** Precise location ("granted"); approximate alone reads "denied" (see `approximateLocationOnly`). */
+export function locationPermission(): Promise<PermissionState> {
+  return check(P.ACCESS_FINE_LOCATION)
+}
+
+/** The user chose "Approximate" in Android's prompt: places and the Wi-Fi name need precise. */
+export async function approximateLocationOnly(): Promise<boolean> {
+  return (await check(P.ACCESS_COARSE_LOCATION)) === 'granted' && (await check(P.ACCESS_FINE_LOCATION)) !== 'granted'
+}
+
+/**
+ * Shows Android's prompt for precise location (Android 12+ asks for both at once; asking again
+ * after "Approximate" offers the upgrade to precise).
+ */
+export async function requestLocationPermission(): Promise<PermissionState> {
+  try {
+    const result = await PermissionsAndroid.requestMultiple([P.ACCESS_FINE_LOCATION, P.ACCESS_COARSE_LOCATION])
+    return answer(result[P.ACCESS_FINE_LOCATION])
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** "Allow all the time": closed-app arrivals and departures. Needs precise location first. */
+export async function backgroundLocationPermission(): Promise<PermissionState> {
+  if (!hasBackgroundLocationPermission) return locationPermission()
+  if ((await locationPermission()) !== 'granted') return 'denied'
+  return check(P.ACCESS_BACKGROUND_LOCATION)
+}
+
+/**
+ * Android 11+ can't grant "Allow all the time" from a prompt: asking opens Jophiel's location page
+ * in Android's settings, where the owner picks it (Android 10 shows a prompt). "blocked": Android
+ * won't open it again; the app's settings still can.
+ */
+export async function requestBackgroundLocationPermission(): Promise<PermissionState> {
+  if (!hasBackgroundLocationPermission) return locationPermission()
+  try {
+    return answer(await PermissionsAndroid.request(P.ACCESS_BACKGROUND_LOCATION))
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** Physical activity, for motion (walking, in a vehicle…). */
+export async function activityPermission(): Promise<PermissionState> {
+  return hasActivityPermission ? check(P.ACTIVITY_RECOGNITION) : 'granted'
+}
+
+export async function requestActivityPermission(): Promise<PermissionState> {
+  if (!hasActivityPermission) return 'granted'
+  try {
+    return answer(await PermissionsAndroid.request(P.ACTIVITY_RECOGNITION))
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** Nearby devices, to notice Bluetooth headphones connecting with the app closed. */
+export async function nearbyPermission(): Promise<PermissionState> {
+  return hasNearbyPermission ? check(P.BLUETOOTH_CONNECT) : 'granted'
+}
+
+export async function requestNearbyPermission(): Promise<PermissionState> {
+  if (!hasNearbyPermission) return 'granted'
+  try {
+    return answer(await PermissionsAndroid.request(P.BLUETOOTH_CONNECT))
+  } catch {
+    return 'unknown'
+  }
+}

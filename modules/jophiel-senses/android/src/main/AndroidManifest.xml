@@ -1,0 +1,57 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Phase 6: phone senses. -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <!-- Places (geofences) and the Wi-Fi name. Android 12+ asks for coarse and fine together. -->
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <!-- Arrivals and departures with the app closed ("Allow all the time"). -->
+  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+  <!-- Motion: the runtime permission (Android 10+) and Play Services' own for older versions. -->
+  <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+  <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
+  <!-- Bluetooth headphones connecting / disconnecting (Nearby devices on Android 12+). -->
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+  <!-- Geofences and activity transitions are cleared on reboot: register them again. -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+  <application>
+    <!-- Play Services wakes the app with these (PendingIntents of our own, so not exported). -->
+    <receiver
+      android:name="expo.modules.jophielsenses.GeofenceReceiver"
+      android:exported="false" />
+    <receiver
+      android:name="expo.modules.jophielsenses.MotionReceiver"
+      android:exported="false" />
+
+    <!--
+      Sent by the Bluetooth stack (its own uid, not the system's), so exported. Nothing in the
+      broadcast is trusted: headphones are read again from AudioManager.
+    -->
+    <receiver
+      android:name="expo.modules.jophielsenses.BluetoothReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+        <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+        <action android:name="android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" />
+        <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+      </intent-filter>
+    </receiver>
+
+    <!--
+      Re-registers geofences and activity transitions after a reboot or an app update. Only ever
+      re-applies stored settings. (Location switched back on is not a broadcast a closed app gets:
+      the next app open registers them again.)
+    -->
+    <receiver
+      android:name="expo.modules.jophielsenses.RestoreReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

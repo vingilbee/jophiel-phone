@@ -5,6 +5,7 @@ import { onSignOut } from '@/auth/session'
 import { ChatProvider } from '@/chat/ChatProvider'
 import { initialTappedMessageId, notifee, onPendingTap, takePendingTap, tappedMessageId } from '@/push/display'
 import { startPush, stopPushForSignOut } from '@/push/registration'
+import { useSensesBridge } from '@/senses/useSensesBridge'
 import { getSettings } from '@/settings/store'
 import { useColors } from '@/theme'
 import { VoiceProvider } from '@/voice/VoiceProvider'
@@ -41,6 +42,7 @@ export default function MainLayout() {
   useEffect(() => startPush(), [])
   useEffect(() => onSignOut(stopPushForSignOut), [])
   useNotificationTaps()
+  useSensesBridge()
 
   // First run after signing in: walk through Setup once (it can be skipped and reopened from Settings).
   useEffect(() => {
@@ -63,6 +65,8 @@ export default function MainLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="setup/[step]" />
+          <Stack.Screen name="senses" />
+          <Stack.Screen name="places" />
           <Stack.Screen name="developer" />
         </Stack>
       </VoiceProvider>

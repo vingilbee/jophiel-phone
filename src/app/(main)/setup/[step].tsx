@@ -8,25 +8,59 @@ import { Button, Icon, type IconName } from '@/components/Controls'
 import { pushEnabled } from '@/push/config'
 import { registerNow } from '@/push/registration'
 import {
+  hasActivityPermission,
+  hasBackgroundLocationPermission,
+  hasNearbyPermission,
   openAppSettings,
   openBatterySettings,
   requestMicrophonePermission,
   requestNotificationPermission,
   showsBatteryStep,
 } from '@/setup/permissions'
-import { usePermissions } from '@/setup/usePermissions'
+import { askSensePermission } from '@/setup/sensePermissions'
+import { usePermissions, type Permissions } from '@/setup/usePermissions'
 import { getSettings, updateSettings } from '@/settings/store'
 import { radius, space, useColors } from '@/theme'
 
-type StepId = 'connection' | 'notifications' | 'microphone' | 'battery'
+const STEP_IDS = [
+  'connection',
+  'notifications',
+  'microphone',
+  'location',
+  'location-always',
+  'activity',
+  'nearby',
+  'battery',
+] as const
 
-function steps(): StepId[] {
-  return [
-    'connection',
-    ...(pushEnabled ? (['notifications'] as const) : []),
-    'microphone',
-    ...(showsBatteryStep() ? (['battery'] as const) : []),
-  ]
+type StepId = (typeof STEP_IDS)[number]
+
+function isStep(value: unknown): value is StepId {
+  return typeof value === 'string' && (STEP_IDS as readonly string[]).includes(value)
+}
+
+/**
+ * The steps this phone shows. "Allow all the time" only follows a granted location (Android can't
+ * grant it without); the step on screen always counts, so its number never jumps away.
+ */
+function steps(p: Permissions, current: StepId): StepId[] {
+  const shown = (id: StepId): boolean => {
+    switch (id) {
+      case 'notifications':
+        return pushEnabled
+      case 'location-always':
+        return hasBackgroundLocationPermission && (current === id || (p.location !== 'denied' && p.location !== 'blocked'))
+      case 'activity':
+        return hasActivityPermission
+      case 'nearby':
+        return hasNearbyPermission
+      case 'battery':
+        return showsBatteryStep()
+      default:
+        return true
+    }
+  }
+  return STEP_IDS.filter((id) => id === current || shown(id))
 }
 
 type Check = 'idle' | 'checking' | 'ok' | 'failed'
@@ -35,11 +69,11 @@ export default function SetupStep() {
   const colors = useColors()
   const insets = useSafeAreaInsets()
   const router = useRouter()
-  const { step } = useLocalSearchParams<{ step: StepId }>()
-  const all = steps()
-  const index = Math.max(0, all.indexOf(step))
-  const current = all[index] ?? 'connection'
-  const [permissions, refresh] = usePermissions()
+  const { step } = useLocalSearchParams<{ step: string }>()
+  const current: StepId = isStep(step) ? step : 'connection'
+  const [permissions, refresh, learn] = usePermissions()
+  const all = steps(permissions, current)
+  const index = Math.max(0, all.indexOf(current))
   const [check, setCheck] = useState<Check>('idle')
   // Android only says "won't ask again" in answer to a request; a later check reads plain "denied".
   const [micBlocked, setMicBlocked] = useState(false)
@@ -71,14 +105,26 @@ export default function SetupStep() {
     else router.replace('/')
   }
 
-  const done =
-    current === 'connection'
-      ? check === 'ok'
-      : current === 'notifications'
-        ? permissions.notifications === 'granted'
-        : current === 'microphone'
-          ? microphone === 'granted'
-          : permissions.battery === 'granted'
+  const done = (() => {
+    switch (current) {
+      case 'connection':
+        return check === 'ok'
+      case 'notifications':
+        return permissions.notifications === 'granted'
+      case 'microphone':
+        return microphone === 'granted'
+      case 'location':
+        return permissions.location === 'granted'
+      case 'location-always':
+        return permissions.backgroundLocation === 'granted'
+      case 'activity':
+        return permissions.activity === 'granted'
+      case 'nearby':
+        return permissions.nearby === 'granted'
+      case 'battery':
+        return permissions.battery === 'granted'
+    }
+  })()
 
   let icon: IconName
   let title: string
@@ -137,6 +183,96 @@ export default function SetupStep() {
               }
       if (microphone === 'blocked') {
         problem = "Android won't ask again. In the app settings, tap Permissions → Microphone and allow it."
+      }
+      break
+    case 'location':
+      icon = 'map-marker-outline'
+      title = 'Where you are, by name'
+      body =
+        'So she knows when you get home or leave work. You save places (Settings → Phone senses → Places), and she\'s only told their names when you arrive or leave, never your position. It also tells her the Wi-Fi name. In Android\'s prompt, keep “Precise” on.'
+      action =
+        permissions.location === 'blocked'
+          ? { label: 'Open app settings', onPress: () => void openAppSettings() }
+          : done
+            ? null
+            : {
+                label: permissions.approximateOnly ? 'Allow precise location' : 'Allow location',
+                onPress: () =>
+                  void askSensePermission('location', permissions.location).then((result) => {
+                    if (result !== 'unknown') learn('location', result)
+                    refresh()
+                  }),
+              }
+      if (permissions.location === 'blocked') {
+        problem = "Android won't ask again. In the app settings, tap Permissions → Location, allow it and turn on “Use precise location”."
+      } else if (!done && permissions.approximateOnly) {
+        problem = 'Only approximate location is allowed. Places need precise: tap “Allow precise location”.'
+      }
+      break
+    case 'location-always':
+      icon = 'map-marker-radius-outline'
+      title = 'Arrivals with the app closed'
+      body =
+        'For her to hear “Arrived at home” while the app is closed, Android needs location set to “Allow all the time”. Android only offers that on its own page: tap below, choose “Allow all the time”, then come back. Without it, she learns where you are each time you open the app.'
+      action =
+        permissions.backgroundLocation === 'blocked'
+          ? { label: 'Open app settings', onPress: () => void openAppSettings() }
+          : done
+            ? null
+            : {
+                label: 'Open location settings',
+                onPress: () =>
+                  void askSensePermission('backgroundLocation', permissions.backgroundLocation).then((result) => {
+                    if (result !== 'unknown') learn('backgroundLocation', result)
+                    refresh()
+                  }),
+              }
+      if (permissions.backgroundLocation === 'blocked') {
+        problem = "Android won't open it from here again. In the app settings, tap Permissions → Location → Allow all the time."
+      }
+      break
+    case 'activity':
+      icon = 'walk'
+      title = 'Walking, driving, still'
+      body =
+        'So she knows whether you\'re still, walking, running, cycling or in a vehicle. Android works it out from the phone\'s motion sensors, and it keeps working with the app closed.'
+      action =
+        permissions.activity === 'blocked'
+          ? { label: 'Open app settings', onPress: () => void openAppSettings() }
+          : done
+            ? null
+            : {
+                label: 'Allow physical activity',
+                onPress: () =>
+                  void askSensePermission('activity', permissions.activity).then((result) => {
+                    if (result !== 'unknown') learn('activity', result)
+                    refresh()
+                  }),
+              }
+      if (permissions.activity === 'blocked') {
+        problem = "Android won't ask again. In the app settings, tap Permissions → Physical activity and allow it."
+      }
+      break
+    case 'nearby':
+      icon = 'headphones'
+      title = 'Your headphones'
+      body =
+        'So she notices when you put AirPods or other Bluetooth headphones on, even with the app closed. Android calls this “Nearby devices”; Jophiel only uses it to see headphones connect and disconnect.'
+      action =
+        permissions.nearby === 'blocked'
+          ? { label: 'Open app settings', onPress: () => void openAppSettings() }
+          : done
+            ? null
+            : {
+                label: 'Allow nearby devices',
+                onPress: () =>
+                  void askSensePermission('nearby', permissions.nearby).then((result) => {
+                    if (result !== 'unknown') learn('nearby', result)
+                    refresh()
+                  }),
+              }
+      if (permissions.nearby === 'blocked') {
+        problem = "Android won't ask again. In the app settings, tap Permissions → Nearby devices and allow it."
       }
       break
     case 'battery':

@@ -235,3 +235,52 @@ when phase 7 is planned:
    Address search waits for phase 7; voice saving is a later backend memory task.
 8. Settings shows the last value sent per group.
 9. Logout stops everything and removes the circles but keeps the places list.
+
+## Implementation notes (2026-11-21, branch `phase-6-phone-senses`)
+
+Steps 6.1–6.5 and the code half of 6.7 are written; the device checks of 6.1–6.6 are still the
+owner's (see "Not yet verified").
+
+- **Native module** `modules/jophiel-senses` (Kotlin, `expo.modules.jophielsenses`):
+  `Readers` (each field now), `LiveReaders` (in-code receivers + audio-device and network
+  callbacks, started by JS), `Background` (geofences + activity transitions, registered only when
+  the group is on, the permission is there and credentials are stored), `Receivers` (geofence,
+  motion, Bluetooth, boot / app-update restore), `Reporter` + `ReportWorker` (WorkManager PUT),
+  `Store` (prefs; credentials AES-GCM with an Android-keystore key), `PlaceLogic` (pure).
+- **Deviations from the text above, on purpose:**
+  - Credentials are sealed with a keystore key directly, not `EncryptedSharedPreferences`
+    (androidx.security-crypto is deprecated). Same protection.
+  - Place resolution lives in Kotlin (it has to run with no JS), so its unit tests are JUnit:
+    `cd android && ./gradlew :jophiel-senses:testDebugUnitTest`. Everything else pure is `bun test`
+    (`src/senses/senses.test.ts`).
+  - Network: VPNs are ignored (Tailscale is the default network on the S21 and hides Wi-Fi vs
+    mobile); Wi-Fi wins when both are up. The type is read from all networks after callbacks settle
+    (500 ms), so mobile data isn't reported for a moment at startup.
+  - `locked`: Samsung locks some seconds after the screen goes off, so while live and screen-off the
+    keyguard is re-read every 5 s until it locks (at most 31 min).
+  - On app open (at most every 10 min, and right after places change) one precise fix re-checks the
+    place, with or without "Allow all the time": it also catches a departure missed while the
+    phone was off or location was switched off (geofences are dropped then, and "location back
+    on" is not a broadcast a closed app receives; the next app open re-registers them).
+  - On connect the full snapshot includes `null` for switched-off groups (harmless server-side:
+    null → null is no change), so a switch-off made while offline still reaches her.
+  - A background report older than 23 h is dropped instead of sent (the server would treat it as
+    "now"). Retries: exponential from 30 s, up to 12 tries; 401 clears credentials, geofences and
+    transitions until the next sign-in; other 4xx are dropped.
+  - Headphones = wired, USB, A2DP, SCO, BLE headset, hearing aid. A Bluetooth car stereo or speaker
+    also counts (Android can't tell them apart without more permissions).
+- **JS:** `src/senses/` (groups, `report.ts` value checks + diffing, controller, native bridge,
+  `useSensesBridge` in the signed-in layout); `phone` in `sense` frames via `ConnectionSource.phone`
+  (`connection.ts` sends the whole state as each socket's first frame, then only changes). Screens:
+  Settings → Phone senses (`/senses`), Places (`/places`); Setup steps `location`,
+  `location-always`, `activity`, `nearby`; Settings → Permissions rows.
+- **Checked here:** typecheck, lint, `bun test` (135 pass), Kotlin unit tests (9 pass), a full
+  `assembleDebug` with the merged manifest checked, and the payloads (full PUT body, a `sense`
+  diff, the worker's body) validated against the backend's own `PhoneStateReport` /
+  `SenseUpdateRequest`.
+
+### Not yet verified (needs a device)
+
+Everything in the "Done when" column of 6.1–6.6: values reaching `phone_state:<user>`, switch-off
+clearing, Setup grant / skip / blocked on Android 14, emulator GPS route into a place with the app
+closed, reboot re-registration, motion and AirPods with the app closed on the S21, battery drain.

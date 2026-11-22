@@ -4,7 +4,7 @@ import { getToken } from '@/auth/token'
 import { reconnectDelay } from '@/connection/state'
 // Phase 5: ack and reconnect timers run on the native clock, so a call's socket recovers in the background.
 import { clearTimeout, setTimeout } from '@/voice/timers'
-import { parseFrame, type ClientFrame, type SenseFrame, type ServerFrame } from './frames'
+import { parseFrame, type ClientFrame, type PhoneStateReport, type SenseFrame, type ServerFrame } from './frames'
 import type { QueuedMessage } from './model'
 import { ACK_TIMEOUT_MS, addStrike, pickNextSend, type InFlight } from './queue'
 import { VoiceChannel } from './voice'
@@ -30,7 +30,11 @@ export interface ConnectionSource {
   conversationId: () => string | null
   /** The turn still streaming when the socket dropped, to resume its conversation. */
   resumeTurnId: () => string | null
-  sense: () => Omit<SenseFrame, 'type' | 'client'>
+  sense: () => Omit<SenseFrame, 'type' | 'client' | 'phone'>
+  /** Phase 6: the `phone` object for this frame (`full`: first on this socket), or null for none. */
+  phone: (full: boolean) => PhoneStateReport | null
+  /** That `phone` object went out. */
+  phoneSent: (report: PhoneStateReport, full: boolean) => void
   /** The chat already has this saved message. */
   knowsMessage: (messageId: string) => boolean
 }
@@ -52,6 +56,8 @@ export class ChatConnection {
    * without a conversation id would start a new one.
    */
   private historyReceived = false
+  /** This socket was sent the phone's whole state (its first `sense` frame); afterwards only changes. */
+  private phoneSynced = false
   /** Failed tries per message; connection drops don't count. */
   private readonly strikes = new Map<string, number>()
   open = false
@@ -113,7 +119,13 @@ export class ChatConnection {
   }
 
   sendSense() {
-    this.send({ type: 'sense', client: 'phone', ...this.source.sense() })
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    const full = !this.phoneSynced
+    const phone = this.source.phone(full)
+    const frame: SenseFrame = { type: 'sense', client: 'phone', ...this.source.sense(), ...(phone ? { phone } : {}) }
+    if (!this.send(frame)) return
+    this.phoneSynced = true
+    if (phone) this.source.phoneSent(phone, full)
   }
 
   stopReply() {
@@ -181,6 +193,7 @@ export class ChatConnection {
       this.attempt = 0
       this.inFlight = null
       this.historyReceived = false
+      this.phoneSynced = false
       this.setOpen(true)
       this.sendSense()
       this.pump()
