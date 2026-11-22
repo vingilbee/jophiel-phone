@@ -96,6 +96,9 @@ class JophielNotificationsModule : Module() {
 
     Function("stopLive") { Outbox.setLive(context, null) }
 
+    /** JS may send batch `id` now (false: it timed out and went the background way; drop it). */
+    Function("claim") { id: String -> Outbox.claim(id) }
+
     /** JS sent batch `id` over the socket (`sent`), or has no socket: then it goes as a background POST. */
     Function("settled") { id: String, sent: Boolean -> Outbox.settled(context, id, sent) }
 

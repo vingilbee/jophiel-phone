@@ -40,6 +40,8 @@ declare class JophielNotificationsModule extends NativeModule<JophielNotificatio
   stopLive(): void
   /** No socket: send this batch with a background POST. */
   /** JS sent batch `id` over the socket, or couldn't (`sent` false: native POSTs it). Native holds the next until then. */
+  /** Before sending batch `id`: false means it timed out natively (already queued), so don't send it. */
+  claim(id: string): boolean
   settled(id: string, sent: boolean): void
   status(): NotificationsStatus
   reply(key: string, conversationId: string | null, revision: number | null, text: string): Promise<ListenerAnswer>

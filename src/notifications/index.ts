@@ -76,6 +76,8 @@ function remember(frame: PhoneNotificationsFrame) {
 // Native hands one batch at a time and holds the next until this one is settled, so a batch that
 // falls back to the background POST never lands after a later one sent over the socket.
 JophielNotifications?.addListener('onNotifications', ({ id, body }) => {
+  // Arrived after native gave up on it (JS was stalled): it already went the background way.
+  if (!JophielNotifications?.claim(id)) return
   const frame = parseNotificationsFrame(body)
   let sent = false
   try {

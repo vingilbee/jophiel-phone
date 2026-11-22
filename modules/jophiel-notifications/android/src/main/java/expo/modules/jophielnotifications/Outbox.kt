@@ -38,6 +38,8 @@ internal object Outbox {
   private var liveSink: ((String, String) -> Unit)? = null
   /** The batch JS has and hasn't settled yet (id, body): one at a time, so none overtakes another. */
   private var inJs: Pair<String, String>? = null
+  /** JS claimed the batch it has (it's sending it now): the timeout no longer takes it back. */
+  private var claimed = false
   /** Batches waiting for JS to settle the one it has, oldest first. */
   private val held = ArrayDeque<String>()
   private val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -80,8 +82,26 @@ internal object Outbox {
     }
     val id = UUID.randomUUID().toString()
     inJs = id to body
-    main.postDelayed({ settled(app, id, sent = false) }, id, SETTLE_MS)
+    claimed = false
+    main.postDelayed({ timedOut(app, id) }, id, SETTLE_MS)
     sink(id, body)
+  }
+
+  /**
+   * JS is about to send batch `id` over the socket. False: too late (it timed out and went the
+   * background way, or was dropped), so JS must not send it: it could land after later batches.
+   */
+  @Synchronized
+  fun claim(id: String): Boolean {
+    if (inJs?.first != id) return false
+    main.removeCallbacksAndMessages(id)
+    claimed = true
+    return true
+  }
+
+  @Synchronized
+  private fun timedOut(app: Context, id: String) {
+    if (inJs?.first == id && !claimed) settled(app, id, sent = false)
   }
 
   /** JS live (`sink` gets each batch) or not (null: what JS had or was held goes the background way). */
@@ -99,6 +119,7 @@ internal object Outbox {
     val app = context.applicationContext
     main.removeCallbacksAndMessages(id)
     inJs = null
+    claimed = false
     if (!sent) queue(app, current.second)
     while (inJs == null) {
       val next = held.removeFirstOrNull() ?: break

@@ -67,10 +67,19 @@ internal object Contacts {
     } else {
       uri
     }
+    // Only `contacts/<id>`: the bare table, or a sub-path (photo, data…), isn't one person.
+    if (!isOneContact(contact)) return null
     resolver.query(contact, arrayOf(ContactsContract.Contacts.LOOKUP_KEY), null, null, null)?.use { cursor ->
-      if (cursor.moveToFirst()) return cursor.getString(0)?.let(::ContactMatch)
+      if (cursor.count == 1 && cursor.moveToFirst()) return cursor.getString(0)?.let(::ContactMatch)
     }
     return null
+  }
+
+  private fun isOneContact(uri: Uri): Boolean {
+    val base = ContactsContract.Contacts.CONTENT_URI
+    if (uri.scheme != base.scheme || uri.authority != base.authority) return false
+    val segments = uri.pathSegments
+    return segments.size == 2 && segments[0] == base.lastPathSegment && segments[1].toLongOrNull() != null
   }
 
   private fun byNumber(context: Context, number: String): ContactMatch? {
