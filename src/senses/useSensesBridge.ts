@@ -61,12 +61,12 @@ export function useSensesBridge() {
   }, [settings.senses, settings.places])
 
   // Phase 8: the Notifications sense and the Messages switch, mirrored natively (the listener runs
-  // with the app closed); whether her replies are paused goes to her as phone state.
+  // with the app closed); whether her replies may go out goes to her as phone state (`messages_on`).
   const messagesOn = settings.actionsEnabled && settings.actionGroups.messages
   const firstMessages = useRef(true)
   useEffect(() => {
     configureNotifications(settings.senses.notifications, messagesOn)
-    phoneSenses.setLocal({ replies_paused: !messagesOn }, !firstMessages.current)
+    phoneSenses.setLocal({ messages_on: messagesOn }, !firstMessages.current)
     firstMessages.current = false
   }, [settings.senses.notifications, messagesOn])
 

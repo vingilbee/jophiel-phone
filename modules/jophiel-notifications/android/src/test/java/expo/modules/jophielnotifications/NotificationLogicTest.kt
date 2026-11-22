@@ -116,7 +116,7 @@ class NotificationLogicTest {
     val p = Extract.posted(chat.copy(messages = many), ids, 1, zone, "Vincent") { null }
     assertEquals(listOf("m4", "m5", "m6", "m7", "on my way"), p.messages.map { it.text })
     val owner = p.messages.last()
-    assertEquals("owner", owner.identity)
+    assertNull(owner.identity)
     assertEquals("owner", owner.senderId)
     assertEquals("Vincent", owner.sender)
     assertEquals("name", p.messages.first().identity)

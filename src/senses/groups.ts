@@ -17,7 +17,7 @@ export const GROUP_FIELDS: Record<SenseGroup, readonly PhoneField[]> = {
   places: ['place'],
   // Phase 8: the notifications themselves go in their own frames; these are what they add to the
   // phone state. Whether her replies are paused only means something while she sees notifications.
-  notifications: ['media', 'navigation', 'replies_paused'],
+  notifications: ['media', 'navigation', 'messages_on'],
 }
 
 const FIELD_GROUP = Object.fromEntries(

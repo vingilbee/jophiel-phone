@@ -142,7 +142,7 @@ export const PHONE_FIELDS = [
   'place',
   'media',
   'navigation',
-  'replies_paused',
+  'messages_on',
 ] as const
 
 export type PhoneField = (typeof PHONE_FIELDS)[number]
@@ -167,8 +167,8 @@ export interface PhoneState {
   media: MediaState | null
   /** Phase 8: the Maps trip's next step and time left, while navigating. */
   navigation: NavigationState | null
-  /** Phase 8: Settings → Phone actions → Messages is off, so her replies and drafts are paused. */
-  replies_paused: boolean | null
+  /** Phase 8: Settings → Phone actions → Messages (and the master switch) on: her replies and drafts may go out. */
+  messages_on: boolean | null
 }
 
 export interface MediaState {
@@ -193,6 +193,8 @@ export interface PhoneNotificationsFrame {
   type: 'phone_notifications'
   posted: unknown[]
   removed: { key: string; reason: string }[]
+  /** The sense was switched off: nothing reported before is still known. */
+  all_removed?: boolean
 }
 
 export type PhoneStateReport = Partial<PhoneState> & {

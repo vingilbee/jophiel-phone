@@ -349,16 +349,17 @@ is open.
   Phone senses have the new steps / rows.
 
 **Changed from or added to the contract** (for the backend agent)
-- `PhoneStateReport` gets three fields, all in the **Notifications** sense group: `media`,
-  `navigation`, and **`replies_paused: bool`** (the mirrored Messages switch; also true when the master
-  switch is off). Until the backend accepts them, a `sense` frame carrying one would be rejected whole
-  (`extra="forbid"`), so the backend half should land first.
+- Matched to the backend's schema (`feature/phone-phase-8-backend`, 2026-11-22): the Messages switch
+  goes as **`messages_on: bool`** (false when Messages or the master switch is off) in the
+  Notifications sense group, with `media` and `navigation`. The `POST` body is the frame without
+  `type`; switching the sense off sends `all_removed: true`; at most 50 posted / 200 removed per batch
+  (bigger ones split); app names ≤ 80, senders ≤ 120, distance ≤ 40, arrival ≤ 80 characters.
 - Messages written on the phone (the owner's, or hers through a reply button) are in `messages` with
-  `identity: "owner"`, `sender_id: "owner"`, `in_contacts: false`, `sender` = the name the app shows for
+  `sender_id: "owner"`, `identity: null`, `in_contacts: false`, `sender` = the name the app shows for
   the owner (often "You").
 - `removed[].reason`: `opened` (tapped), `cleared` (swiped / clear all), `app` (the app took it back),
-  `dismissed` (by her), `snoozed`, `timeout`, `switched_off` (the sense switched off: one batch with
-  every key), `removed` (anything else, including ones that went away while the listener wasn't bound).
+  `dismissed` (by her), `snoozed`, `timeout`, `removed` (anything else, including ones that went away
+  while the listener wasn't bound).
 - `conversation_identity` (`shortcut` | `title`) is on each posted entry, as the plan's text says.
 - `revision` is kept per Android key across restarts (prefs), so a listener rebind doesn't reset it.
 

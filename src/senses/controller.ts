@@ -10,7 +10,7 @@ import { changes, checkFields, effective, fieldsOf, isEmpty, sameValue, type Kno
 const WAKE_UP_FIELDS: readonly PhoneField[] = ['motion', 'place', 'media', 'navigation']
 
 /** Fields JS itself knows (a setting), not the native module: a snapshot never clears them. */
-const LOCAL_FIELDS: readonly PhoneField[] = ['replies_paused']
+const LOCAL_FIELDS: readonly PhoneField[] = ['messages_on']
 
 /** What the controller needs from the native module (a stand-in in tests; null in an old build). */
 export interface SensesNative {
@@ -146,7 +146,7 @@ export class PhoneSenses {
   }
 
   /**
-   * A field JS knows itself (phase 8: `replies_paused`, from Settings). `send`: it just changed, so
+   * A field JS knows itself (phase 8: `messages_on`, from Settings). `send`: it just changed, so
    * tell her now (the socket if open, else a background PUT); otherwise the next `sense` frame
    * carries it.
    */

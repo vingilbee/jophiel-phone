@@ -90,7 +90,7 @@ function words(group: SenseGroup, last: LastReported): string | null {
       const parts = [
         media ? `${media.state === 'playing' ? 'Playing' : 'Paused'}: ${media.title}${media.artist ? ` – ${media.artist}` : ''} (${media.app})` : null,
         navigation ? `Navigating: ${navigation.next_step}${navigation.eta_text ? ` · ${navigation.eta_text}` : ''}` : null,
-        value(last, 'replies_paused') === true ? 'Replies paused' : null,
+        value(last, 'messages_on') === false ? 'Replies paused' : null,
       ]
       const text = parts.filter(Boolean).join('; ')
       return text || null

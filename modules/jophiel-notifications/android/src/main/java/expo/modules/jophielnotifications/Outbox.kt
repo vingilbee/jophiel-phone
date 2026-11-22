@@ -38,10 +38,21 @@ internal object Outbox {
   @Volatile
   var liveSink: ((String) -> Unit)? = null
 
-  fun send(context: Context, posted: List<Posted>, removed: List<Removed>) {
-    if (posted.isEmpty() && removed.isEmpty()) return
+  /** The backend takes at most this many per batch; bigger ones go as several. */
+  private const val MAX_POSTED = 50
+  private const val MAX_REMOVED = 200
+
+  /** `allRemoved`: the sense was switched off, nothing reported before is still known. */
+  fun send(context: Context, posted: List<Posted>, removed: List<Removed>, allRemoved: Boolean = false) {
+    if (posted.size > MAX_POSTED || removed.size > MAX_REMOVED) {
+      removed.chunked(MAX_REMOVED).forEach { send(context, emptyList(), it) }
+      posted.chunked(MAX_POSTED).forEach { send(context, it, emptyList()) }
+      if (allRemoved) send(context, emptyList(), emptyList(), allRemoved = true)
+      return
+    }
+    if (posted.isEmpty() && removed.isEmpty() && !allRemoved) return
     val app = context.applicationContext
-    val body = frame(posted, removed).toString()
+    val body = frame(posted, removed, allRemoved).toString()
     Store.markSentAt(app, System.currentTimeMillis())
     val sink = liveSink
     if (sink != null) {
@@ -94,11 +105,13 @@ internal object Outbox {
     File(app.noBackupFilesDir, "notifications").listFiles()?.forEach { it.delete() }
   }
 
-  fun frame(posted: List<Posted>, removed: List<Removed>): JSONObject =
+  /** The socket frame; the POST sends the same without `type`. */
+  fun frame(posted: List<Posted>, removed: List<Removed>, allRemoved: Boolean): JSONObject =
     JSONObject()
       .put("type", "phone_notifications")
       .put("posted", JSONArray().apply { posted.forEach { put(json(it)) } })
       .put("removed", JSONArray().apply { removed.forEach { put(JSONObject().put("key", it.key).put("reason", it.reason)) } })
+      .put("all_removed", allRemoved)
 
   private fun json(p: Posted): JSONObject =
     JSONObject()
@@ -121,7 +134,7 @@ internal object Outbox {
                 .put("event_id", m.eventId)
                 .put("sender", m.sender)
                 .put("sender_id", m.senderId)
-                .put("identity", m.identity)
+                .put("identity", m.identity ?: JSONObject.NULL)
                 .put("in_contacts", m.inContacts)
                 .put("text", m.text)
                 .put("at", m.at),
@@ -156,9 +169,12 @@ class PostWorker(context: Context, params: WorkerParameters) : Worker(context, p
     } catch (e: Exception) {
       return finish()
     }
+    // The endpoint's body is the frame without its `type`.
+    body.remove("type")
     // Switched off while this waited: what was posted stays on the phone; removals still go.
     if (!Store.enabled(applicationContext)) body.put("posted", JSONArray())
-    if ((body.optJSONArray("posted")?.length() ?: 0) == 0 && (body.optJSONArray("removed")?.length() ?: 0) == 0) return finish()
+    val empty = (body.optJSONArray("posted")?.length() ?: 0) == 0 && (body.optJSONArray("removed")?.length() ?: 0) == 0
+    if (empty && !body.optBoolean("all_removed", false)) return finish()
 
     val code = try {
       post(credentials, body.toString())

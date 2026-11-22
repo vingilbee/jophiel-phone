@@ -36,7 +36,7 @@ internal object Groups {
     SOUND_MODE to listOf("dnd", "ringer"),
     MOTION to listOf("motion"),
     PLACES to listOf("place"),
-    NOTIFICATIONS to listOf("media", "navigation", "replies_paused"),
+    NOTIFICATIONS to listOf("media", "navigation", "messages_on"),
   )
 }
 

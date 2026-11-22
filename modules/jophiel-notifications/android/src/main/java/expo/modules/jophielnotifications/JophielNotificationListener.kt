@@ -113,9 +113,8 @@ class JophielNotificationListener : NotificationListenerService() {
         navigation = null
         navigationKey = null
         // One "all removed": the backend forgets everything this phone told it.
-        val sent = Store.sentKeys(this)
         Store.setSentKeys(this, emptySet())
-        Outbox.send(this, emptyList(), sent.map { Removed(it, "switched_off") })
+        Outbox.send(this, emptyList(), emptyList(), allRemoved = true)
       }
     }
   }

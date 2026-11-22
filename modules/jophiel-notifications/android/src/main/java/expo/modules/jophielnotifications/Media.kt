@@ -114,7 +114,7 @@ internal class Media(private val context: Context, private val component: Compon
       ?: clip(metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST), MAX_TITLE)
       ?: clip(metadata?.description?.subtitle?.toString(), MAX_TITLE)
     return JSONObject()
-      .put("app", label(c.packageName))
+      .put("app", clip(label(c.packageName), MAX_APP) ?: c.packageName.take(MAX_APP))
       .put("title", title)
       .put("artist", artist ?: JSONObject.NULL)
       .put("state", if (isPlaying(c)) "playing" else "paused")

@@ -15,6 +15,9 @@ import javax.crypto.spec.SecretKeySpec
 
 /** Text is cut to these (code points) so one huge notification can't bloat a frame. */
 internal const val MAX_TITLE = 200
+/** The backend's limits for a sender's name and an app's name. */
+internal const val MAX_SENDER = 120
+internal const val MAX_APP = 80
 internal const val MAX_TEXT = 1_000
 internal const val MAX_MESSAGES = 5
 internal const val COALESCE_MS = 5_000L
@@ -67,8 +70,8 @@ internal data class SentMessage(
   val eventId: String,
   val sender: String,
   val senderId: String,
-  /** `contact` (made from the contact), `name` (conversation-local), `owner` (you). */
-  val identity: String,
+  /** `contact` (made from the contact), `name` (conversation-local); null for your own (`sender_id` "owner"). */
+  val identity: String?,
   val inContacts: Boolean,
   val text: String,
   val at: String,
@@ -188,10 +191,10 @@ internal object Extract {
     val messages = n.messages.takeLast(MAX_MESSAGES).mapNotNull { m ->
       val text = clip(m.text, MAX_TEXT) ?: return@mapNotNull null
       if (m.fromOwner) {
-        val name = clip(ownerName, MAX_TITLE) ?: "You"
-        return@mapNotNull SentMessage(ids.event(conversationId, OWNER_ID, m.at, text), name, OWNER_ID, "owner", false, text, isoTime(m.at, zone))
+        val name = clip(ownerName, MAX_SENDER) ?: "You"
+        return@mapNotNull SentMessage(ids.event(conversationId, OWNER_ID, m.at, text), name, OWNER_ID, null, false, text, isoTime(m.at, zone))
       }
-      val name = clip(m.sender, MAX_TITLE) ?: conversationName ?: "Unknown"
+      val name = clip(m.sender, MAX_SENDER) ?: clip(conversationName, MAX_SENDER) ?: "Unknown"
       val match = contact(m)
       val (senderId, identity) = ids.sender(match, name, n.packageName, conversationId)
       SentMessage(ids.event(conversationId, name, m.at, text), name, senderId, identity, match != null, text, isoTime(m.at, zone))
@@ -199,7 +202,7 @@ internal object Extract {
     return Posted(
       key = ids.key(n.sbnKey),
       revision = revision,
-      app = n.appName,
+      app = clip(n.appName, MAX_APP) ?: n.packageName.take(MAX_APP),
       packageName = n.packageName,
       title = clip(n.title, MAX_TITLE),
       text = clip(n.text, MAX_TEXT),
@@ -290,7 +293,8 @@ internal object MapsTrip {
     }
     val eta = clip(subText, MAX) ?: rest.firstOrNull { TIME.containsMatchIn(it) && rest.size > 1 }
     val step = rest.firstOrNull { it != eta } ?: return null
-    return Navigation(step, distance, eta)
+    // The backend's limits: distance 40, arrival 80.
+    return Navigation(step, clip(distance, 40), clip(eta, 80))
   }
 
   /** Sent when the step or the arrival changes, not on every distance tick. */

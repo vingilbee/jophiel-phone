@@ -451,7 +451,7 @@ describe('what Settings shows', () => {
   })
 })
 
-describe('phase 8: now playing, the Maps trip, replies paused', () => {
+describe('phase 8: now playing, the Maps trip, messages_on', () => {
   const T0 = Date.parse('2026-11-22T19:00:00Z')
   const song = { app: 'Spotify', title: 'Evaluasi', artist: 'Hindia', state: 'playing' }
 
@@ -467,9 +467,9 @@ describe('phase 8: now playing, the Maps trip, replies paused', () => {
       eta_text: null,
     })
     expect(checkValue('navigation', { distance_text: '300 m' })).toBeUndefined()
-    expect(checkValue('replies_paused', true)).toBe(true)
+    expect(checkValue('messages_on', true)).toBe(true)
     expect(groupOf('media')).toBe('notifications')
-    expect(groupOf('replies_paused')).toBe('notifications')
+    expect(groupOf('messages_on')).toBe('notifications')
   })
 
   test('the same song again is no change; a new state is', () => {
@@ -486,31 +486,31 @@ describe('phase 8: now playing, the Maps trip, replies paused', () => {
     expect(senses.report(true)?.media).toBeUndefined()
   })
 
-  test('replies_paused: in the next frame, or sent now when it changes', () => {
+  test('messages_on: in the next frame, or sent now when it changes', () => {
     const fake = fakeNative({ battery: 50 })
     let senses: PhoneSenses | null = null
     senses = new PhoneSenses(fake.native, ALL_ON, () => T0)
-    senses.setLocal({ replies_paused: false }, false)
-    expect(senses.report(true)).toMatchObject({ battery: 50, replies_paused: false })
+    senses.setLocal({ messages_on: false }, false)
+    expect(senses.report(true)).toMatchObject({ battery: 50, messages_on: false })
 
     // No socket: a change goes out as a background PUT.
-    senses.setLocal({ replies_paused: true }, true)
-    expect(fake.calls.background).toEqual([{ fields: { replies_paused: true }, at: T0 }])
+    senses.setLocal({ messages_on: true }, true)
+    expect(fake.calls.background).toEqual([{ fields: { messages_on: true }, at: T0 }])
 
     // A socket: a sense frame with only the change.
     const { link, frames } = fakeLink(() => senses!)
     senses.attach(link)
     link.sendSense()
-    senses.setLocal({ replies_paused: false }, true)
-    expect(frames.at(-1)).toMatchObject({ replies_paused: false })
-    expect(Object.keys(frames.at(-1) as object).sort()).toEqual(['observed_at', 'replies_paused'])
+    senses.setLocal({ messages_on: false }, true)
+    expect(frames.at(-1)).toMatchObject({ messages_on: false })
+    expect(Object.keys(frames.at(-1) as object).sort()).toEqual(['messages_on', 'observed_at'])
   })
 
   test('the Notifications group off reads null for all three', () => {
-    expect(effective({ media: song as never, replies_paused: true }, off('notifications'))).toMatchObject({
+    expect(effective({ media: song as never, messages_on: true }, off('notifications'))).toMatchObject({
       media: null,
       navigation: null,
-      replies_paused: null,
+      messages_on: null,
     })
   })
 
@@ -518,7 +518,7 @@ describe('phase 8: now playing, the Maps trip, replies paused', () => {
     const last: LastReported = {
       media: { value: song, at: T0, since: T0 },
       navigation: { value: { next_step: 'Turn left onto Jl. Kemang Raya', distance_text: '300 m', eta_text: '19:30' }, at: T0, since: T0 },
-      replies_paused: { value: true, at: T0, since: T0 },
+      messages_on: { value: false, at: T0, since: T0 },
     }
     expect(describeGroup('notifications', last, T0 + 60_000)).toBe(
       'Playing: Evaluasi – Hindia (Spotify); Navigating: Turn left onto Jl. Kemang Raya · 19:30; Replies paused · 1 min ago',
