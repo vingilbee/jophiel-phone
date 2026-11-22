@@ -23,11 +23,12 @@ the phone-action channel were split off into phase 7 (see "Moved to phase 7").
   | `dnd` | bool |
   | `ringer` | `"normal"` / `"vibrate"` / `"silent"` |
   | `motion` | `"still"` / `"walking"` / `"running"` / `"cycling"` / `"vehicle"` |
-  | `place` | string ≤ 60, a **name** ("home"), never coordinates |
-  | `observed_at` | ISO time the phone saw it (server clamps; older than 24 h = now) |
+  | `place` | string ≤ 60, a **name** ("home"), never coordinates; `"away"` = at none of them (a name a place can't have) |
+  | `observed_at` | ISO time the phone saw it (a future time is taken as now; a late one keeps its time, and never overwrites a newer reading) |
 
   `extra="forbid"`: unknown fields are rejected. **Partial**: only fields sent change. An explicit
-  `null` means "no longer known" (left every place, motion unknown, a group switched off).
+  `null` means "no longer known" (motion unknown, a group switched off). Leaving every place is `"away"`,
+  never `null`: the server says "Left home" only on `"away"`.
 - **App open (socket up):** the same object as `phone` inside the existing `sense` frame
   (`chat.py` ~1764 reads `message.phone.fields()` and `message.phone.observed_at`).
 - **No socket:** `PUT /api/phone/state` with `Authorization: Bearer <token>`; body = the object;
@@ -108,7 +109,7 @@ module's own `AndroidManifest.xml` (no hand edits to `android/`).
   radius from the place). Place list mirrored natively so `BOOT_COMPLETED` /
   `MY_PACKAGE_REPLACED` can re-register without JS. `place` value:
   - ENTER → that place's name.
-  - EXIT → if still inside another place, that one; else `null` ("Left home").
+  - EXIT → if still inside another place, that one; else `"away"` ("Left home").
   - Overlapping places: the smallest circle wins.
   - App open with only "while using" location (no background permission → no geofences): on app
     open, one current-location read checks the circles and sets `place`.
@@ -121,7 +122,9 @@ module's own `AndroidManifest.xml` (no hand edits to `android/`).
 
 - `src/senses/` (new): groups, settings glue, the bridge to the module, diffing for `sense` frames.
 - `connection.ts` `sense()` source gains `phone`: the **full snapshot on connect**, afterwards only
-  changed fields with `observed_at`; the heartbeat re-sends nothing extra. Types in
+  changed fields with `observed_at`; the heartbeat re-sends nothing extra. Going live again on the same
+  socket (back from the background) re-sends every known field: the server confirms as current only what was
+  sent since the app last went live. Types in
   `src/chat/frames.ts` (`PhoneState`, mirroring `PhoneStateReport`; keep the field list in one place).
 - Live readers on when the app is `active` **or** a voice call is live (hook into `VoiceProvider` /
   AppState); off otherwise.

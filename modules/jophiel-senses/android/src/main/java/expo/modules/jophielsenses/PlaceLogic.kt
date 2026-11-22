@@ -14,9 +14,12 @@ data class Place(val id: String, val name: String, val latitude: Double, val lon
  *
  * The phone tracks the set of circles it's inside: geofence ENTER adds to it, EXIT removes, a
  * current-location check replaces it. The reported place is the smallest of those circles
- * (overlapping places: the smaller, more specific one wins); none → null ("Left home").
+ * (overlapping places: the smaller, more specific one wins); none → [AWAY] ("Left home"). Null
+ * on the wire means "not known" (location off), never a departure.
  */
 object PlaceLogic {
+  /** At none of the named places (the server's confirmed departure; src/senses/places.ts AWAY). */
+  const val AWAY = "away"
   private const val EARTH_RADIUS_M = 6_371_008.8
 
   /** Great-circle distance in meters (haversine). */
@@ -42,7 +45,7 @@ object PlaceLogic {
     return inside.filter { it in known }.toSet()
   }
 
-  /** The place to report: the smallest circle you're inside (first saved wins a tie), or null. */
-  fun resolve(inside: Set<String>, places: List<Place>): String? =
-    places.filter { it.id in inside }.minByOrNull { it.radius }?.name
+  /** The place to report: the smallest circle you're inside (first saved wins a tie), or [AWAY]. */
+  fun resolve(inside: Set<String>, places: List<Place>): String =
+    places.filter { it.id in inside }.minByOrNull { it.radius }?.name ?: AWAY
 }

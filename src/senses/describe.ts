@@ -2,6 +2,7 @@ import type { PhoneField, PhoneState } from '@/chat/frames'
 import { dayLabel, timeLabel } from '@/chat/format'
 import { GROUP_FIELDS, type SenseGroup } from './groups'
 import { checkValue } from './report'
+import { AWAY } from './places'
 
 /** Per field: the last value that reached her, when it was sent, since when it's had it (epoch ms). */
 export type LastReported = Partial<Record<PhoneField, { value: unknown; at: number; since: number }>>
@@ -87,7 +88,7 @@ function words(group: SenseGroup, last: LastReported): string | null {
       const entry = last.place
       if (!entry) return null
       const place = value(last, 'place')
-      return place ? `Place: ${place}` : 'Not at a saved place'
+      return place === AWAY ? 'Not at a saved place' : place ? `Place: ${place}` : 'Place not known'
     }
   }
 }

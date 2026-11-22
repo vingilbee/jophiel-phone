@@ -25,10 +25,21 @@ export function newPlaceId(): string {
   return `place-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/**
+ * What `place` says when the phone is at none of the named places (they left home). Not a name a
+ * place can have; null on the wire means "not known" (location off), never "left".
+ */
+export const AWAY = 'away'
+
 /** Trimmed and at most 60 characters; empty → null (a place needs a name). */
 export function placeName(input: string): string | null {
   const name = clip(input.trim().replace(/\s+/g, ' '), MAX_PLACE_NAME)
   return name === '' ? null : name
+}
+
+/** True when a name is taken by the wire's "at none of them" (`AWAY`, any case). */
+export function reservedPlaceName(name: string): boolean {
+  return name.toLowerCase() === AWAY
 }
 
 /** A stored place, or null if it isn't one (storage from another version, hand edits). */

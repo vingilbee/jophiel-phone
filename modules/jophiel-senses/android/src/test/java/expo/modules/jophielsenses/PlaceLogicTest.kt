@@ -1,7 +1,6 @@
 package expo.modules.jophielsenses
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -38,9 +37,9 @@ class PlaceLogicTest {
   }
 
   @Test
-  fun exitFromTheLastPlaceIsNull() {
+  fun exitFromTheLastPlaceIsAway() {
     val inside = PlaceLogic.afterTransition(setOf("h"), listOf("h"), entered = false)
-    assertNull(PlaceLogic.resolve(inside, places))
+    assertEquals(PlaceLogic.AWAY, PlaceLogic.resolve(inside, places))
   }
 
   @Test
@@ -70,6 +69,6 @@ class PlaceLogicTest {
   fun deletedPlacesArePrunedFromTheInsideSet() {
     val pruned = PlaceLogic.prune(setOf("h", "gone"), places)
     assertEquals(setOf("h"), pruned)
-    assertNull(PlaceLogic.resolve(setOf("gone"), places))
+    assertEquals(PlaceLogic.AWAY, PlaceLogic.resolve(setOf("gone"), places))
   }
 }
