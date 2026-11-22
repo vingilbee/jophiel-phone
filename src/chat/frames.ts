@@ -83,7 +83,15 @@ export type ServerFrame =
       expires_at?: string
     }
   /** Phase 7: a quiet line in the chat for an action she took or a position she used. */
-  | { type: 'phone_activity'; conversation_id?: string | null; message_id: string; text: string; created_at: string }
+  | {
+      type: 'phone_activity'
+      conversation_id?: string | null
+      message_id: string
+      text: string
+      created_at: string
+      /** A late answer: this replaces the text of the line already shown with this id ("sent, no answer yet"). */
+      replaces?: boolean
+    }
 
 const HANDLED = new Set([
   'meta', 'history', 'ack', 'seen', 'token', 'sticker', 'nudge_start', 'nudge_token', 'nudge_sticker',
