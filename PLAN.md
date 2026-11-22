@@ -52,7 +52,7 @@ needs native audio capture + playback and speaks the same protocol as the web ap
 
 Each phase ends with something usable on the phone. Phases 0–3 are specified in
 detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`, phase 5 in `PLAN_PHASE_5.md`,
-phase 6 in `PLAN_PHASE_6.md`. No time estimates (owner, 2026-11-21): the size of a phase is
+phase 6 in `PLAN_PHASE_6.md`, phase 7 in `PLAN_PHASE_7.md`. No time estimates (owner, 2026-11-21): the size of a phase is
 described by its hard parts in its own plan.
 
 Phase order changed 2026-11-21: the old phase 6 (Location + Maps) was split into **6 Phone
@@ -68,7 +68,7 @@ senses** and **7 Maps + phone-action channel**; everything after moved up by one
 | 4 | **Voice, app open** | Native (Kotlin) mic capture with Android's echo cancellation, PCM playback, VAD, push-to-talk; voice mode on Chat | none (reuses the WS voice protocol) |
 | 5 | **Voice in the background** | Foreground service ("Jophiel is listening" notification), AirPods/speaker routing, Samsung battery setup, survives screen lock | none |
 | 6 | **Phone senses** | Reports screen, lock, battery, charging, headphones, network, Wi-Fi name, Do Not Disturb, ringer, motion and named place: in `sense` frames while open or in a call; place / motion / Bluetooth headphones also from a closed app (geofences, activity transitions). Places in Settings, 7 switch groups, 3 Setup steps | **Already built**: `PUT /api/phone/state`, `phone` in `sense`, her phone source in the mind |
-| 7 | **Maps + phone actions channel** | Carry out actions sent by her and report results; first action `navigate_to` (open Google Maps navigating); add a place by address | One general **phone-action tool** (actions down over WS, or push when the app sleeps); `search_places` + `get_route` via Google Maps Platform so she answers travel questions hands-free; Maps API key. Open: route start point vs "no coordinates" (see `PLAN_PHASE_6.md`) |
+| 7 | **Maps + phone actions channel** | Carry out actions sent by her and report results; `navigate_to` opens Google Maps navigating (also from the pocket: wake + Smart Lock, else a "tap to start navigation" notification); one-off position on request, never stored; add a place by address; 2 Setup steps (display over other apps, full-screen notifications) | One general **phone-action tool** (WS, or push when the app sleeps); `get_position`, `search_places`, `get_route` (traffic), "where am I" via Google Maps Platform; Maps key with daily caps |
 | 8 | **Phone actions** | Open apps/links: WhatsApp (message pre-typed), Discord, Spotify, Maps; play/pause/next/volume; read notifications and reply via their reply button (works while locked); alarms, reminders. New permission: notification access | More actions on the same phone-action tool |
 | 9 | **Phone control** | Accessibility service: read screen, tap, type, scroll, back. For whatever phase 8 can't do directly. Setup step for Samsung's "Allow restricted settings" | Tools `read_screen`/`tap`/`type_text`/…; allowed-apps list and confirmations enforced on both sides |
 | 10 | **Chibi in the app** | Rive animation driven by her state (idle, listening, thinking, talking + lip sync, moods) | Her state/mood in the WS frames if not already there |
