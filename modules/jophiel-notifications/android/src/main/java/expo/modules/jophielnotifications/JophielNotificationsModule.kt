@@ -84,20 +84,20 @@ class JophielNotificationsModule : Module() {
     /** JS live: batches come to JS (`onNotifications`) for the socket. */
     Function("startLive") {
       val ctx = context
-      Outbox.liveSink = { body ->
+      Outbox.setLive(ctx) { id, body ->
         try {
-          sendEvent("onNotifications", mapOf("body" to body))
+          sendEvent("onNotifications", mapOf("id" to id, "body" to body))
         } catch (e: Throwable) {
           // JS went away between the check and the send: the batch takes the background path.
-          Outbox.queue(ctx, body)
+          main.post { Outbox.settled(ctx, id, sent = false) }
         }
       }
     }
 
-    Function("stopLive") { Outbox.liveSink = null }
+    Function("stopLive") { Outbox.setLive(context, null) }
 
-    /** JS got a batch but has no socket: send it with a background POST. */
-    Function("queue") { body: String -> Outbox.queue(context, body) }
+    /** JS sent batch `id` over the socket (`sent`), or has no socket: then it goes as a background POST. */
+    Function("settled") { id: String, sent: Boolean -> Outbox.settled(context, id, sent) }
 
     /** For Settings: access, whether the listener is bound, how many notifications she knows of, when last sent. */
     Function("status") {
@@ -133,8 +133,10 @@ class JophielNotificationsModule : Module() {
       listener.mediaControl(command) { promise.resolve(answer(it)) }
     }
 
-    OnDestroy { Outbox.liveSink = null }
+    OnDestroy { runCatching { Outbox.setLive(context, null) } }
   }
+
+  private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
   /** The bound listener, or the promise answered with why there's none. */
   private fun listener(promise: Promise): JophielNotificationListener? {

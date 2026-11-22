@@ -42,7 +42,9 @@ internal object Fields {
 internal class Media(private val context: Context, private val component: ComponentName, private val handler: Handler) {
   private val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
   private var controllers: List<MediaController> = emptyList()
+  /** What was last sent; `sent` false: nothing yet since connecting (or switching on), so even "nothing playing" goes. */
   private var last: String? = null
+  private var sent = false
   private var started = false
   private val labels = HashMap<String, String>()
 
@@ -76,11 +78,12 @@ internal class Media(private val context: Context, private val component: Compon
   /** Switched off: what was sent is forgotten, so switching on again sends it anew. */
   fun forget() {
     last = null
+    sent = false
   }
 
   /** Forget what was sent (switched off and on again): the next change, or `resend`, sends it. */
   fun resend() {
-    last = null
+    forget()
     changed()
   }
 
@@ -132,8 +135,9 @@ internal class Media(private val context: Context, private val component: Compon
     if (!Store.enabled(context)) return
     val now = nowPlaying()
     val text = now?.toString()
-    if (text == last) return
+    if (sent && text == last) return
     last = text
+    sent = true
     Fields.report(context, "media", now)
   }
 

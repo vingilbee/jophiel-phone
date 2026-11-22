@@ -46,8 +46,7 @@ internal object Contacts {
     if (uri != null) {
       when {
         uri.startsWith("tel:") -> return byNumber(context, Uri.decode(uri.removePrefix("tel:")))
-        uri.startsWith(ContactsContract.Contacts.CONTENT_LOOKUP_URI.toString()) ->
-          Uri.parse(uri).pathSegments.getOrNull(2)?.let { return ContactMatch(it) }
+        uri.startsWith(ContactsContract.Contacts.CONTENT_URI.toString()) -> return byContactUri(context, Uri.parse(uri))
       }
     }
     val shown = name?.trim().orEmpty()
@@ -55,6 +54,23 @@ internal object Contacts {
     // Apps show an unknown sender by number ("+62 812-3456-7890").
     if (PHONE_LIKE.matches(shown)) return byNumber(context, shown)
     return byName(context, shown)
+  }
+
+  /**
+   * A contact URI the app gave (a lookup URI, or a plain contact id): only a contact that exists
+   * on this phone counts, under its current lookup key (an app's copy can be stale or made up).
+   */
+  private fun byContactUri(context: Context, uri: Uri): ContactMatch? {
+    val resolver = context.contentResolver
+    val contact = if (uri.toString().startsWith(ContactsContract.Contacts.CONTENT_LOOKUP_URI.toString())) {
+      ContactsContract.Contacts.lookupContact(resolver, uri) ?: return null
+    } else {
+      uri
+    }
+    resolver.query(contact, arrayOf(ContactsContract.Contacts.LOOKUP_KEY), null, null, null)?.use { cursor ->
+      if (cursor.moveToFirst()) return cursor.getString(0)?.let(::ContactMatch)
+    }
+    return null
   }
 
   private fun byNumber(context: Context, number: String): ContactMatch? {

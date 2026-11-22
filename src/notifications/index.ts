@@ -73,12 +73,19 @@ function remember(frame: PhoneNotificationsFrame) {
   if (newest && frame.removed.some((r) => r.key === newest?.key)) newest = null
 }
 
-JophielNotifications?.addListener('onNotifications', ({ body }) => {
+// Native hands one batch at a time and holds the next until this one is settled, so a batch that
+// falls back to the background POST never lands after a later one sent over the socket.
+JophielNotifications?.addListener('onNotifications', ({ id, body }) => {
   const frame = parseNotificationsFrame(body)
-  if (!frame) return
-  if (__DEV__) remember(frame)
-  if (socket?.send(frame)) return
-  JophielNotifications?.queue(body)
+  let sent = false
+  try {
+    if (frame) {
+      if (__DEV__) remember(frame)
+      sent = socket?.send(frame) ?? false
+    }
+  } finally {
+    JophielNotifications?.settled(id, sent)
+  }
 })
 
 /** Same rule as the senses: live while the app is on screen or a call keeps it alive. */

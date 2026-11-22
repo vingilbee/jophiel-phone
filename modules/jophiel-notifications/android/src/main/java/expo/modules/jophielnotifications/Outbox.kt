@@ -34,9 +34,15 @@ private const val WORK_NAME = "jophiel-notifications"
  * network and retries with backoff, one batch after another.
  */
 internal object Outbox {
-  /** Set while JS is live; gets the frame as JSON text. */
-  @Volatile
-  var liveSink: ((String) -> Unit)? = null
+  /** Set while JS is live; gets a batch's id and its frame as JSON text. */
+  private var liveSink: ((String, String) -> Unit)? = null
+  /** The batch JS has and hasn't settled yet (id, body): one at a time, so none overtakes another. */
+  private var inJs: Pair<String, String>? = null
+  /** Batches waiting for JS to settle the one it has, oldest first. */
+  private val held = ArrayDeque<String>()
+  private val main = android.os.Handler(android.os.Looper.getMainLooper())
+  /** JS that never settles (it froze or went away) loses the batch to the background path. */
+  private const val SETTLE_MS = 10_000L
 
   /** The backend takes at most this many per batch; bigger ones go as several. */
   private const val MAX_POSTED = 50
@@ -54,14 +60,50 @@ internal object Outbox {
     val app = context.applicationContext
     val body = frame(posted, removed, allRemoved).toString()
     Store.markSentAt(app, System.currentTimeMillis())
-    // While a batch still waits in the background chain, later ones join it rather than overtaking
-    // it on the socket (a removal or clear arriving before the post it undoes).
-    val sink = liveSink
-    if (sink != null && !hasQueued(app)) {
-      sink(body)
+    deliver(app, body)
+  }
+
+  /**
+   * One ordered path. While a batch waits in the background chain, later ones join it; while JS
+   * has one, later ones wait behind it. A removal or clear never arrives before the post it undoes.
+   */
+  @Synchronized
+  private fun deliver(app: Context, body: String) {
+    if (inJs != null) {
+      held.addLast(body)
       return
     }
-    queue(app, body)
+    val sink = liveSink
+    if (sink == null || hasQueued(app)) {
+      queue(app, body)
+      return
+    }
+    val id = UUID.randomUUID().toString()
+    inJs = id to body
+    main.postDelayed({ settled(app, id, sent = false) }, id, SETTLE_MS)
+    sink(id, body)
+  }
+
+  /** JS live (`sink` gets each batch) or not (null: what JS had or was held goes the background way). */
+  @Synchronized
+  fun setLive(context: Context, sink: ((String, String) -> Unit)?) {
+    liveSink = sink
+    if (sink == null) inJs?.let { settled(context.applicationContext, it.first, sent = false) }
+  }
+
+  /** JS sent the batch over the socket, or couldn't (it goes the background way). Then the next one. */
+  @Synchronized
+  fun settled(context: Context, id: String, sent: Boolean) {
+    val current = inJs ?: return
+    if (current.first != id) return
+    val app = context.applicationContext
+    main.removeCallbacksAndMessages(id)
+    inJs = null
+    if (!sent) queue(app, current.second)
+    while (inJs == null) {
+      val next = held.removeFirstOrNull() ?: break
+      deliver(app, next)
+    }
   }
 
   /**
@@ -111,8 +153,12 @@ internal object Outbox {
     }
   }
 
+  @Synchronized
   fun cancelAll(context: Context) {
     val app = context.applicationContext
+    inJs?.let { main.removeCallbacksAndMessages(it.first) }
+    inJs = null
+    held.clear()
     try {
       WorkManager.getInstance(app).cancelUniqueWork(WORK_NAME)
     } catch (e: Exception) {

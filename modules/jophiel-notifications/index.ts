@@ -25,7 +25,8 @@ export interface NotificationsStatus {
 
 export type JophielNotificationsEvents = {
   /** While live: a `phone_notifications` frame (JSON text) for the socket. */
-  onNotifications: (event: { body: string }) => void
+  /** A batch for the socket; answer with `settled(id, sent)`. */
+  onNotifications: (event: { id: string; body: string }) => void
 }
 
 declare class JophielNotificationsModule extends NativeModule<JophielNotificationsEvents> {
@@ -38,7 +39,8 @@ declare class JophielNotificationsModule extends NativeModule<JophielNotificatio
   startLive(): void
   stopLive(): void
   /** No socket: send this batch with a background POST. */
-  queue(body: string): void
+  /** JS sent batch `id` over the socket, or couldn't (`sent` false: native POSTs it). Native holds the next until then. */
+  settled(id: string, sent: boolean): void
   status(): NotificationsStatus
   reply(key: string, conversationId: string | null, revision: number | null, text: string): Promise<ListenerAnswer>
   dismiss(key: string): Promise<ListenerAnswer>
