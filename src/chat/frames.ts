@@ -96,6 +96,51 @@ export interface RunFrame {
   image_ids: string[]
 }
 
+/**
+ * Phase 6: what the phone says about itself, the one copy of the field list on the phone. Source of
+ * truth: `PhoneStateReport` in ../app/backend/app/schemas/phone.py (`extra="forbid"`: no other
+ * names; a value outside these types fails the whole frame). Partial: only fields sent change; an
+ * explicit null means "no longer known".
+ */
+export const PHONE_FIELDS = [
+  'screen',
+  'locked',
+  'battery',
+  'charging',
+  'headphones',
+  'network',
+  'wifi_name',
+  'dnd',
+  'ringer',
+  'motion',
+  'place',
+] as const
+
+export type PhoneField = (typeof PHONE_FIELDS)[number]
+
+export interface PhoneState {
+  screen: 'on' | 'off' | null
+  locked: boolean | null
+  /** Integer 0–100. */
+  battery: number | null
+  charging: boolean | null
+  /** Wired or Bluetooth. */
+  headphones: boolean | null
+  network: 'wifi' | 'cellular' | 'none' | null
+  /** At most 64 characters. */
+  wifi_name: string | null
+  dnd: boolean | null
+  ringer: 'normal' | 'vibrate' | 'silent' | null
+  motion: 'still' | 'walking' | 'running' | 'cycling' | 'vehicle' | null
+  /** A place's name (at most 60 characters), never coordinates. */
+  place: string | null
+}
+
+export type PhoneStateReport = Partial<PhoneState> & {
+  /** When the phone saw it (ISO). */
+  observed_at?: string
+}
+
 export interface SenseFrame {
   type: 'sense'
   client: 'phone'
@@ -111,6 +156,8 @@ export interface SenseFrame {
   /** No wake word on the phone yet (phase 9). */
   wake_armed: false
   voice_state: VoiceState
+  /** Phase 6: the whole state on connect, afterwards only what changed. */
+  phone?: PhoneStateReport
 }
 
 export type VoiceFrame =

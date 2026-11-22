@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.jophiel.senses'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.jophielsenses"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // Geofences, activity transitions and the one-off current location (phase 6).
+  implementation 'com.google.android.gms:play-services-location:21.3.0'
+  // Background reports (PUT /api/phone/state) with a network constraint and backoff.
+  implementation 'androidx.work:work-runtime:2.10.5'
+
+  testImplementation 'junit:junit:4.13.2'
+}

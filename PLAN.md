@@ -32,7 +32,8 @@ apps and a notification.
 - **Voice:** push-to-talk or wake word ("hey Jophiel"); keep listening in the background
   on/off; output (automatic / speaker / headphones); use the phone's mic even with
   AirPods (better sound quality).
-- **Location:** off / while using / always; places (home, work…) she knows by name.
+- **Phone senses (phase 6):** seven groups (phone use, battery, headphones, network, sound mode,
+  motion, places), each on/off, with the last value she was told; places (home, work…) she knows by name.
 - **Phone control:** master switch; apps she may touch; actions that always ask first
   (sending a message, calling, paying, deleting).
 - **Her reaching out:** none in the app: Android's notification settings for Jophiel (quiet times = Samsung's Do Not Disturb).
@@ -50,35 +51,38 @@ needs native audio capture + playback and speaks the same protocol as the web ap
 ## Build order
 
 Each phase ends with something usable on the phone. Phases 0–3 are specified in
-detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`, phase 5 in `PLAN_PHASE_5.md`.
+detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`, phase 5 in `PLAN_PHASE_5.md`,
+phase 6 in `PLAN_PHASE_6.md`. No time estimates (owner, 2026-11-21): the size of a phase is
+described by its hard parts in its own plan.
 
-| # | Phase | Phone side | Backend side (`../app`) | Size |
-|---|---|---|---|---|
-| 0 | **Setup** | Expo dev build in the Android emulator on the Mac (the S21 + Tailscale pass comes before phase 4) | none | 1–2 days |
-| 1 | **Login + chat** | Login, Chat (history, streaming replies, stickers, nudges), reconnect when the app comes back | Accept `Authorization: Bearer` (same opaque session token) on REST + WS; WS origin check allows the phone; login returns the token for the phone | 4–6 days |
-| 2 | **Notifications** | Firebase push; tap a notification → opens the chat | Register phone devices (FCM token); push what she says when you aren't present anywhere and she didn't say it aloud | 2–3 days |
-| 3 | **Settings + Setup** | Both screens, settings stored on the phone, permission steps | none | 2–3 days |
-| — | **Real-phone pass (S21)** | Tailscale + HTTPS, release APK, Samsung battery, notifications on the real phone | none | 1–2 days |
-| 4 | **Voice, app open** | Native (Kotlin) mic capture with Android's echo cancellation, PCM playback, VAD, push-to-talk; voice mode on Chat | none (reuses the WS voice protocol) | 6–9 days |
-| 5 | **Voice in the background** | Foreground service ("Jophiel is listening" notification), AirPods/speaker routing, Samsung battery setup, survives screen lock | none | 4–6 days |
-| 6 | **Location + Maps** | Location sent up as a sense (no `get_user_location` tool); named places (home, work…) and geofences; first phone action: open Google Maps navigating to a place | One general **phone-action tool** (actions sent down over WS, or push when the app sleeps; results reported back), first action `navigate_to`; `search_places` + `get_route` via Google Maps Platform so she answers travel questions hands-free ("25 min, heavy traffic"); places table; Maps API key | 4–6 days |
-| 7 | **Phone actions** | Open apps/links: WhatsApp (chat with the message pre-typed), Discord (app or channel link), Spotify (song/album/playlist), Maps; play/pause/next/volume for whatever is playing; read notifications and reply via their reply button (works while locked); alarms, reminders. New permission: notification access | More actions on the same phone-action tool | 3–5 days |
-| 8 | **Phone control** | Accessibility service: read screen, tap, type, scroll, back. For whatever phase 7 can't do directly (press send, add a Maps stop, search inside Spotify). Setup step for Samsung's "Allow restricted settings" | Tools `read_screen`/`tap`/`type_text`/…; allowed-apps list and confirmations enforced on both sides | 7–12 days |
-| 9 | **Chibi in the app** | Rive animation driven by her state (idle, listening, thinking, talking + lip sync, moods) | Her state/mood in the WS frames if not already there | 3–5 days (art made separately) |
-| 10 | **Floating chibi** | Overlay window over other apps (Kotlin), roaming, tap to talk, drag, hide per app | none | 5–8 days |
-| 11 | **Wake word** | Porcupine "hey Jophiel" inside the background service | none | 2–4 days |
-| 12 | **Default assistant** | Jophiel as the assistant on power-button long-press | none | 2–3 days |
+Phase order changed 2026-11-21: the old phase 6 (Location + Maps) was split into **6 Phone
+senses** and **7 Maps + phone-action channel**; everything after moved up by one.
+
+| # | Phase | Phone side | Backend side (`../app`) |
+|---|---|---|---|
+| 0 | **Setup** | Expo dev build in the Android emulator on the Mac | none |
+| 1 | **Login + chat** | Login, Chat (history, streaming replies, stickers, nudges), reconnect when the app comes back | Bearer token on REST + WS; WS origin check allows the phone; login returns the token |
+| 2 | **Notifications** | Firebase push; tap a notification → opens the chat | Register phone devices (FCM token); push what she says when you aren't present anywhere and she didn't say it aloud |
+| 3 | **Settings + Setup** | Both screens, settings stored on the phone, permission steps | none |
+| — | **Real-phone pass (S21)** | Tailscale + HTTPS, release APK, Samsung battery, notifications on the real phone | none |
+| 4 | **Voice, app open** | Native (Kotlin) mic capture with Android's echo cancellation, PCM playback, VAD, push-to-talk; voice mode on Chat | none (reuses the WS voice protocol) |
+| 5 | **Voice in the background** | Foreground service ("Jophiel is listening" notification), AirPods/speaker routing, Samsung battery setup, survives screen lock | none |
+| 6 | **Phone senses** | Reports screen, lock, battery, charging, headphones, network, Wi-Fi name, Do Not Disturb, ringer, motion and named place: in `sense` frames while open or in a call; place / motion / Bluetooth headphones also from a closed app (geofences, activity transitions). Places in Settings, 7 switch groups, 3 Setup steps | **Already built**: `PUT /api/phone/state`, `phone` in `sense`, her phone source in the mind |
+| 7 | **Maps + phone actions channel** | Carry out actions sent by her and report results; first action `navigate_to` (open Google Maps navigating); add a place by address | One general **phone-action tool** (actions down over WS, or push when the app sleeps); `search_places` + `get_route` via Google Maps Platform so she answers travel questions hands-free; Maps API key. Open: route start point vs "no coordinates" (see `PLAN_PHASE_6.md`) |
+| 8 | **Phone actions** | Open apps/links: WhatsApp (message pre-typed), Discord, Spotify, Maps; play/pause/next/volume; read notifications and reply via their reply button (works while locked); alarms, reminders. New permission: notification access | More actions on the same phone-action tool |
+| 9 | **Phone control** | Accessibility service: read screen, tap, type, scroll, back. For whatever phase 8 can't do directly. Setup step for Samsung's "Allow restricted settings" | Tools `read_screen`/`tap`/`type_text`/…; allowed-apps list and confirmations enforced on both sides |
+| 10 | **Chibi in the app** | Rive animation driven by her state (idle, listening, thinking, talking + lip sync, moods) | Her state/mood in the WS frames if not already there |
+| 11 | **Floating chibi** | Overlay window over other apps (Kotlin), roaming, tap to talk, drag, hide per app | none |
+| 12 | **Wake word** | Porcupine "hey Jophiel" inside the background service | none |
+| 13 | **Default assistant** | Jophiel as the assistant on power-button long-press | none |
 
 ## How big is it
 
-- **Usable MVP (phases 0–3, chat + notifications):** about **2 weeks**.
-- **Voice everywhere (through phase 5):** about **4–5 weeks** total.
-- **Everything (through phase 12):** about **2–3 months** of steady work. Phone control
-  and the floating chibi are the biggest unknowns.
 - **Code size, roughly:** phone app 10–15k lines TypeScript + 2–4k lines Kotlin; backend
   additions 3–5k lines Python (mostly tools, the phone body, push, tests).
+- Phone control and the floating chibi are the biggest unknowns.
 - **Not code, made separately:** the chibi art and its Rive file. The app only needs
-  the Rive file's state-machine inputs agreed on (see phase 9).
+  the Rive file's state-machine inputs agreed on (see phase 10).
 
 ## Stack
 
@@ -105,12 +109,12 @@ detail in `PLAN_PHASE_0-3.md`, phase 4 in `PLAN_PHASE_4.md`, phase 5 in `PLAN_PH
 
 ## Locked phone: what she can and can't do
 
-The phase 6–8 tools are grouped together (decided 2026-11-21); the chibi and the wake word come after.
+The phase 6–9 tools are grouped together (decided 2026-11-21); the chibi and the wake word come after.
 
 - **Works locked, phone in the pocket:** music controls, replying to notifications, reading
   notifications, location (if set to "always"), alarms and reminders, talking to her (phase 5).
 - **Needs the phone unlocked:** opening an app (it opens behind the lock screen otherwise),
-  a new WhatsApp message to someone with no notification to reply to, and all of phase 8
+  a new WhatsApp message to someone with no notification to reply to, and all of phase 9
   (it uses the real screen, visibly). She can never enter the PIN; she says "unlock your
   phone and I'll open Maps".
 - **Samsung Smart Lock** (Settings → Lock screen → Smart Lock), owner's choice, optional:

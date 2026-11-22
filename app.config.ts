@@ -21,7 +21,6 @@ const config: ExpoConfig = {
       backgroundColor: '#C2603E',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
-      monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: true,
     softwareKeyboardLayoutMode: 'resize',

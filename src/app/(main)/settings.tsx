@@ -11,8 +11,9 @@ import { AppText } from '@/components/AppText'
 import { IconButton, ListRow, SectionHeader, SwitchRow } from '@/components/Controls'
 import type { ConnectionPhase } from '@/connection/state'
 import { pushEnabled } from '@/push/config'
-import { openAppSettings, openNotificationSettings } from '@/setup/permissions'
-import { usePermissions } from '@/setup/usePermissions'
+import { SENSE_GROUPS } from '@/senses/groups'
+import { hasActivityPermission, hasBackgroundLocationPermission, hasNearbyPermission, openAppSettings, openNotificationSettings } from '@/setup/permissions'
+import { usePermissions, type Permissions } from '@/setup/usePermissions'
 import { updateSettings, useSettings } from '@/settings/store'
 import { space, useColors } from '@/theme'
 
@@ -26,6 +27,18 @@ const PHASE_LABEL: Record<ConnectionPhase, string> = {
 function lastConnected(iso: string | null): string {
   if (!iso) return 'Never'
   return `${dayLabel(iso)}, ${timeLabel(iso)}`
+}
+
+/** Settings → Permissions → Location, in words. */
+function locationText(p: Permissions): string {
+  if (p.location === 'unknown') return 'Checking…'
+  if (p.location !== 'granted') {
+    return p.approximateOnly
+      ? 'Approximate only. Tap to allow precise location (places, Wi-Fi name).'
+      : 'Off. Tap to allow it in Android (places, Wi-Fi name).'
+  }
+  if (!hasBackgroundLocationPermission || p.backgroundLocation === 'granted') return 'Precise, all the time: arrivals and departures with the app closed.'
+  return 'Precise, only while using the app: places update when you open it. Tap to allow all the time.'
 }
 
 export default function Settings() {
@@ -83,6 +96,17 @@ export default function Settings() {
           onValueChange={(keepListeningInBackground) => updateSettings({ keepListeningInBackground })}
         />
 
+        <SectionHeader title="Her senses" />
+        <ListRow
+          icon="cellphone-information"
+          title="Phone senses"
+          supporting={(() => {
+            const on = SENSE_GROUPS.filter((group) => settings.senses[group]).length
+            return on === SENSE_GROUPS.length ? 'All on: phone use, battery, headphones, network, sound, motion, places' : `${on} of ${SENSE_GROUPS.length} on`
+          })()}
+          onPress={() => router.push('/senses')}
+        />
+
         <SectionHeader title="Account" />
         <ListRow icon="account-outline" title={user?.name ?? 'Signed in'} supporting={user?.email} />
         <ListRow icon="logout" title="Log out" danger onPress={confirmSignOut} />
@@ -114,6 +138,40 @@ export default function Settings() {
           }
           onPress={() => void openAppSettings()}
         />
+        <ListRow
+          icon={permissions.location === 'granted' ? 'map-marker-outline' : 'map-marker-off-outline'}
+          title="Location"
+          supporting={locationText(permissions)}
+          onPress={() => void openAppSettings()}
+        />
+        {hasActivityPermission ? (
+          <ListRow
+            icon="walk"
+            title="Physical activity"
+            supporting={
+              permissions.activity === 'granted'
+                ? 'Allowed, for motion (walking, in a vehicle…).'
+                : permissions.activity === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to allow it in Android (needed for motion).'
+            }
+            onPress={() => void openAppSettings()}
+          />
+        ) : null}
+        {hasNearbyPermission ? (
+          <ListRow
+            icon={permissions.nearby === 'granted' ? 'bluetooth' : 'bluetooth-off'}
+            title="Nearby devices"
+            supporting={
+              permissions.nearby === 'granted'
+                ? 'Allowed, to notice Bluetooth headphones with the app closed.'
+                : permissions.nearby === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to allow it in Android (Bluetooth headphones with the app closed).'
+            }
+            onPress={() => void openAppSettings()}
+          />
+        ) : null}
         {permissions.battery ? (
           <ListRow
             icon="battery-heart-variant"

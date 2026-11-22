@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSyncExternalStore } from 'react'
+import { defaultSwitches, SENSE_GROUPS, type SenseSwitches } from '@/senses/groups'
+import { checkPlaces, type Place } from '@/senses/places'
 import { defaultServerUrl } from './defaults'
 
 /**
@@ -17,6 +19,10 @@ export interface PhoneSettings {
   keepListeningInBackground: boolean
   /** Phase 5: the one-time battery prompt after the first background call was shown. */
   batteryPromptShown: boolean
+  /** Phase 6: which phone senses she gets (Settings → Phone senses). Kept on logout. */
+  senses: SenseSwitches
+  /** Phase 6: named places, on the phone only (coordinates never leave it). Kept on logout. */
+  places: Place[]
 }
 
 const KEY = 'jophiel.settings'
@@ -29,7 +35,21 @@ export function defaults(): PhoneSettings {
     lastConnectedAt: null,
     keepListeningInBackground: true,
     batteryPromptShown: false,
+    senses: defaultSwitches(),
+    places: [],
   }
+}
+
+/** Stored switches over the defaults: a group added later starts on, a non-boolean is ignored. */
+function migrateSwitches(raw: unknown): SenseSwitches {
+  const switches = defaultSwitches()
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return switches
+  const stored = raw as Record<string, unknown>
+  for (const group of SENSE_GROUPS) {
+    const value = stored[group]
+    if (typeof value === 'boolean') switches[group] = value
+  }
+  return switches
 }
 
 export function migrate(raw: unknown): PhoneSettings {
@@ -39,6 +59,15 @@ export function migrate(raw: unknown): PhoneSettings {
   const kept: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(stored)) {
     if (!(key in base) || key === 'version') continue
+    // Objects and arrays are checked field by field; only primitives are kept by type below.
+    if (key === 'senses') {
+      kept.senses = migrateSwitches(value)
+      continue
+    }
+    if (key === 'places') {
+      kept.places = checkPlaces(value)
+      continue
+    }
     const expected = base[key as keyof PhoneSettings]
     const nullable = key === 'lastConnectedAt'
     if (typeof value === typeof expected || (nullable && (value === null || typeof value === 'string'))) {

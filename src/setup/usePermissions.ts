@@ -1,30 +1,85 @@
 import { useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { AppState } from 'react-native'
-import { batteryPermission, microphonePermission, notificationPermission, showsBatteryStep, type PermissionState } from './permissions'
+import {
+  activityPermission,
+  approximateLocationOnly,
+  backgroundLocationPermission,
+  batteryPermission,
+  locationPermission,
+  microphonePermission,
+  nearbyPermission,
+  notificationPermission,
+  showsBatteryStep,
+  type PermissionState,
+} from './permissions'
 
 export interface Permissions {
   notifications: PermissionState
   microphone: PermissionState
   battery: PermissionState | null
+  /** Phase 6: precise location (places, the Wi-Fi name). */
+  location: PermissionState
+  /** Only approximate location was allowed. */
+  approximateOnly: boolean
+  /** Phase 6: "Allow all the time" (arrivals with the app closed). */
+  backgroundLocation: PermissionState
+  /** Phase 6: physical activity (motion). */
+  activity: PermissionState
+  /** Phase 6: nearby devices (Bluetooth headphones with the app closed). */
+  nearby: PermissionState
 }
 
-/** Read from Android on focus and whenever the app comes back (e.g. from the system settings). */
-export function usePermissions(): [Permissions, () => void] {
-  const [state, setState] = useState<Permissions>({ notifications: 'unknown', microphone: 'unknown', battery: null })
+type Blockable = 'notifications' | 'microphone' | 'location' | 'backgroundLocation' | 'activity' | 'nearby'
+
+const INITIAL: Permissions = {
+  notifications: 'unknown',
+  microphone: 'unknown',
+  battery: null,
+  location: 'unknown',
+  approximateOnly: false,
+  backgroundLocation: 'unknown',
+  activity: 'unknown',
+  nearby: 'unknown',
+}
+
+/**
+ * Read from Android on focus and whenever the app comes back (e.g. from the system settings).
+ * `learn` records an answer from a request (only a request can say "blocked").
+ */
+export function usePermissions(): [Permissions, () => void, (name: Blockable, state: PermissionState) => void] {
+  const [state, setState] = useState<Permissions>(INITIAL)
 
   const refresh = useCallback(() => {
     void (async () => {
-      const notifications = await notificationPermission()
-      const microphone = await microphonePermission()
-      const battery = showsBatteryStep() ? await batteryPermission() : null
+      const next: Permissions = {
+        notifications: await notificationPermission(),
+        microphone: await microphonePermission(),
+        battery: showsBatteryStep() ? await batteryPermission() : null,
+        location: await locationPermission(),
+        approximateOnly: await approximateLocationOnly(),
+        backgroundLocation: await backgroundLocationPermission(),
+        activity: await activityPermission(),
+        nearby: await nearbyPermission(),
+      }
       // Android only says "blocked" when asked; a later check reads "denied". Keep what we learned.
-      setState((prev) => ({
-        notifications: prev.notifications === 'blocked' && notifications === 'denied' ? 'blocked' : notifications,
-        microphone: prev.microphone === 'blocked' && microphone === 'denied' ? 'blocked' : microphone,
-        battery,
-      }))
+      setState((prev) => {
+        const keep = (name: Blockable) => (prev[name] === 'blocked' && next[name] === 'denied' ? 'blocked' : next[name])
+        return {
+          ...next,
+          notifications: keep('notifications'),
+          microphone: keep('microphone'),
+          location: keep('location'),
+          backgroundLocation: keep('backgroundLocation'),
+          activity: keep('activity'),
+          nearby: keep('nearby'),
+        }
+      })
     })()
+  }, [])
+
+  const learn = useCallback((name: Blockable, answer: PermissionState) => {
+    setState((prev) => ({ ...prev, [name]: answer }))
   }, [])
 
   useFocusEffect(refresh)
@@ -35,5 +90,5 @@ export function usePermissions(): [Permissions, () => void] {
     return () => sub.remove()
   }, [refresh])
 
-  return [state, refresh]
+  return [state, refresh, learn]
 }

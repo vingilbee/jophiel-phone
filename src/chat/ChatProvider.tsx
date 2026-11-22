@@ -5,6 +5,7 @@ import { connectionPhase, type ConnectionPhase } from '@/connection/state'
 import { updateSettings } from '@/settings/store'
 import { clearPresentedNotifications } from '@/push/display'
 import { retryPushRegistration } from '@/push/registration'
+import { phoneSenses } from '@/senses/native'
 import { ChatConnection } from './connection'
 import type { VoiceState } from './frames'
 import { chatReducer, initialChatState, isReplying, isThinking, visibleItems, type ChatAction, type ChatItem, type ChatState } from './model'
@@ -120,11 +121,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             wake_armed: false,
             voice_state: voiceSense.current.voiceState,
           }),
+          phone: (full) => phoneSenses.report(full),
+          phoneSent: (report, full) => phoneSenses.markSent(report, full),
           knowsMessage: (messageId) => stateRef.current.messages.some((m) => m.id === messageId),
         },
       ),
     [dispatch],
   )
+
+  /**
+   * Phase 6: the phone's live senses run while the app is on screen or a call keeps it alive in the
+   * background (reported in `sense` frames); otherwise only the closed-app wake-ups report.
+   */
+  const updateSensesLive = useCallback(() => {
+    phoneSenses.setLive(appState.current === 'active' || voiceSense.current.voiceState !== 'off')
+  }, [])
+
+  useEffect(() => {
+    const link = { sendSense: () => connection.sendSense(), isOpen: () => connection.open }
+    phoneSenses.attach(link)
+    updateSensesLive()
+    return () => {
+      phoneSenses.detach(link)
+      phoneSenses.setLive(false)
+    }
+  }, [connection, updateSensesLive])
 
   // Restore the waiting queue, then connect.
   useEffect(() => {
@@ -178,6 +199,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const subscription = AppState.addEventListener('change', (next) => {
       const was = appState.current
       appState.current = next
+      updateSensesLive()
       if (next === 'active') {
         cancelBackgroundClose()
         // Coming back from the background starts a fresh "down" clock: the socket was closed on purpose.
@@ -194,7 +216,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       subscription.remove()
       cancelBackgroundClose()
     }
-  }, [connection, cancelBackgroundClose, scheduleBackgroundClose])
+  }, [connection, cancelBackgroundClose, scheduleBackgroundClose, updateSensesLive])
 
   // Drop the queue on sign-out: it belongs to this account.
   useEffect(
@@ -248,12 +270,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return
       }
       voiceSense.current = next
+      updateSensesLive()
       connection.sendSense()
       // Phase 5: a call that ends in the background lets the socket close as usual.
       if (next.voiceState === 'off') scheduleBackgroundClose()
       else cancelBackgroundClose()
     },
-    [connection, cancelBackgroundClose, scheduleBackgroundClose],
+    [connection, cancelBackgroundClose, scheduleBackgroundClose, updateSensesLive],
   )
   const markHeard = useCallback(
     (turnId: string, heardChars: number) => dispatch({ type: 'heard', turnId, heardChars }),
