@@ -1,12 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import JophielActions from '../../modules/jophiel-actions'
+import JophielNotifications from '../../modules/jophiel-notifications'
 import JophielSenses from '../../modules/jophiel-senses'
 import { ApiError } from '@/api/client'
 import { postActionResult } from '@/api/phone'
 import { loadSettings } from '@/settings/store'
 import { setTimeout as setNativeTimeout } from '@/voice/timers'
 import { resultFrame, type ActionResult, type PhoneAction, type PhoneActionResultFrame } from './protocol'
-import { retryDelay, runAction, type ActionDeps } from './run'
+import { retryDelay, runAction, type ActionDeps, type DeviceAnswer, type DeviceDeps } from './run'
 import { seenIds } from './seen'
 
 export { parseAction, type PhoneAction } from './protocol'
@@ -67,13 +68,57 @@ async function deliver(action: PhoneAction, result: ActionResult) {
   }
 }
 
+const NOT_SUPPORTED: DeviceAnswer = { status: 'failed', reason: 'not_supported' }
+
+/** A native call that may be missing in this build, or throw: never more than a `failed`. */
+async function call(run: (() => Promise<DeviceAnswer>) | null): Promise<DeviceAnswer> {
+  if (!run) return NOT_SUPPORTED
+  try {
+    return await run()
+  } catch {
+    return { status: 'failed', reason: 'error' }
+  }
+}
+
+const SPOTIFY = 'com.spotify.music'
+
+const A = JophielActions
+const N = JophielNotifications
+
+const device: DeviceDeps = {
+  mediaControl: (command) => call(N && (() => N.mediaControl(command))),
+  setVolume: (level) => call(A && (() => A.setVolume(level))),
+  setAlarm: ({ hour, minute, label, days }) => call(A && (() => A.setAlarm(hour, minute, label, days))),
+  setTimer: (seconds, label) => call(A && (() => A.setTimer(seconds, label))),
+  setRinger: (mode) => call(A && (() => A.setRinger(mode))),
+  setDnd: (on) => call(A && (() => A.setDnd(on))),
+  dismiss: (key) => call(N && (() => N.dismiss(key))),
+  reply: ({ key, conversationId, revision, text }) => call(N && (() => N.reply(key, conversationId, revision, text))),
+  openApp: (name) => call(A && (() => A.openApp(name))),
+  openLink: (url) => call(A && (() => A.openLink(url))),
+  // Spotify's media session first (plays in the background, also locked); else open Spotify searching.
+  playMusic: async (query) => {
+    if (N) {
+      const viaSession = await call(() => N.playFromSearch(SPOTIFY, query))
+      if (viaSession.status === 'done') return viaSession
+    }
+    return call(A && (() => A.playMusic(query)))
+  },
+  whatsappDraft: (to, text) => call(A && (() => A.whatsappDraft(to, text))),
+}
+
 const deps: ActionDeps = {
   now: () => Date.now(),
   claim,
   switches: async () => {
     // A push may have started the app headless: the settings aren't loaded yet.
     const settings = await loadSettings()
-    return { actionsEnabled: settings.actionsEnabled, placesOn: settings.senses.places }
+    return {
+      actionsEnabled: settings.actionsEnabled,
+      placesOn: settings.senses.places,
+      notificationsOn: settings.senses.notifications,
+      groups: settings.actionGroups,
+    }
   },
   openMaps: async (url, title) => {
     if (!JophielActions) return { status: 'failed', reason: 'not_supported' }
@@ -84,6 +129,7 @@ const deps: ActionDeps = {
     return JophielSenses.positionOnce()
   },
   places: async () => (await loadSettings()).places,
+  device,
   deliver,
 }
 
@@ -122,4 +168,17 @@ export function openOverlaySettings() {
 
 export function openFullScreenIntentSettings() {
   JophielActions?.openFullScreenIntentSettings()
+}
+
+/** Phase 8: Do Not Disturb access (silent mode, DND on / off). Null: not in this build. */
+export function hasDndAccess(): boolean | null {
+  try {
+    return JophielActions?.hasDndAccess() ?? null
+  } catch {
+    return null
+  }
+}
+
+export function openDndSettings() {
+  JophielActions?.openDndSettings()
 }

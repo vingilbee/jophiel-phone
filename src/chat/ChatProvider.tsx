@@ -6,6 +6,7 @@ import { updateSettings } from '@/settings/store'
 import { clearPresentedNotifications } from '@/push/display'
 import { retryPushRegistration } from '@/push/registration'
 import { attachActionsSocket, detachActionsSocket, dispatchAction, parseAction } from '@/actions'
+import { attachNotificationsSocket, detachNotificationsSocket, setNotificationsLive } from '@/notifications'
 import { phoneSenses } from '@/senses/native'
 import { ChatConnection } from './connection'
 import type { VoiceState } from './frames'
@@ -137,9 +138,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   /**
    * Phase 6: the phone's live senses run while the app is on screen or a call keeps it alive in the
    * background (reported in `sense` frames); otherwise only the closed-app wake-ups report.
+   * Phase 8's notifications follow the same rule (live: over this socket; otherwise posted natively).
    */
   const updateSensesLive = useCallback(() => {
-    phoneSenses.setLive(appState.current === 'active' || voiceSense.current.voiceState !== 'off')
+    const live = appState.current === 'active' || voiceSense.current.voiceState !== 'off'
+    phoneSenses.setLive(live)
+    setNotificationsLive(live)
   }, [])
 
   useEffect(() => {
@@ -149,14 +153,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => {
       phoneSenses.detach(link)
       phoneSenses.setLive(false)
+      setNotificationsLive(false)
     }
   }, [connection, updateSensesLive])
 
-  // Phase 7: her actions' results go back over this socket while it's open.
+  // Phase 7: her actions' results go back over this socket while it's open (phase 8: notifications too).
   useEffect(() => {
     const link = { send: connection.send.bind(connection) }
     attachActionsSocket(link)
-    return () => detachActionsSocket(link)
+    attachNotificationsSocket(link)
+    return () => {
+      detachActionsSocket(link)
+      detachNotificationsSocket(link)
+    }
   }, [connection])
 
   // Restore the waiting queue, then connect.

@@ -450,3 +450,84 @@ describe('what Settings shows', () => {
     expect(agoLabel(now - 3 * 3600_000, now)).toBe('3 h ago')
   })
 })
+
+describe('phase 8: now playing, the Maps trip, messages_on', () => {
+  const T0 = Date.parse('2026-11-22T19:00:00Z')
+  const song = { app: 'Spotify', title: 'Evaluasi', artist: 'Hindia', state: 'playing' }
+
+  test('objects are checked field by field', () => {
+    expect(checkValue('media', song)).toEqual(song)
+    expect(checkValue('media', { ...song, artist: undefined })).toEqual({ ...song, artist: null })
+    expect(checkValue('media', { ...song, state: 'stopped' })).toBeUndefined()
+    expect(checkValue('media', { ...song, title: '' })).toBeUndefined()
+    expect(checkValue('media', 'Spotify')).toBeUndefined()
+    expect(checkValue('navigation', { next_step: 'Turn left', distance_text: '300 m', eta_text: null })).toEqual({
+      next_step: 'Turn left',
+      distance_text: '300 m',
+      eta_text: null,
+    })
+    expect(checkValue('navigation', { distance_text: '300 m' })).toBeUndefined()
+    expect(checkValue('messages_on', true)).toBe(true)
+    expect(groupOf('media')).toBe('notifications')
+    expect(groupOf('messages_on')).toBe('notifications')
+  })
+
+  test('the same song again is no change; a new state is', () => {
+    expect(changes({ media: { ...song } as never }, { media: song as never })).toEqual({})
+    expect(changes({ media: { ...song, state: 'paused' } as never }, { media: song as never })).toEqual({ media: { ...song, state: 'paused' } })
+  })
+
+  test('media and navigation missing from a snapshot are unknown, not "as before"', () => {
+    const fake = fakeNative({ media: song })
+    const senses = new PhoneSenses(fake.native, ALL_ON, () => T0)
+    senses.setLive(true)
+    expect(senses.report(true)?.media).toEqual(song as never)
+    delete fake.snapshot.media
+    expect(senses.report(true)?.media).toBeUndefined()
+  })
+
+  test('messages_on: in the next frame, or sent now when it changes', () => {
+    const fake = fakeNative({ battery: 50 })
+    let senses: PhoneSenses | null = null
+    senses = new PhoneSenses(fake.native, ALL_ON, () => T0)
+    senses.setLocal({ messages_on: false }, false)
+    expect(senses.report(true)).toMatchObject({ battery: 50, messages_on: false })
+
+    // No socket: a change goes out as a background PUT.
+    senses.setLocal({ messages_on: true }, true)
+    expect(fake.calls.background).toEqual([{ fields: { messages_on: true }, at: T0 }])
+
+    // A socket: a sense frame with only the change.
+    const { link, frames } = fakeLink(() => senses!)
+    senses.attach(link)
+    link.sendSense()
+    senses.setLocal({ messages_on: false }, true)
+    expect(frames.at(-1)).toMatchObject({ messages_on: false })
+    expect(Object.keys(frames.at(-1) as object).sort()).toEqual(['messages_on', 'observed_at'])
+  })
+
+  test('the Notifications group off reads null for all three', () => {
+    expect(effective({ media: song as never, messages_on: true }, off('notifications'))).toMatchObject({
+      media: null,
+      navigation: null,
+      messages_on: null,
+    })
+  })
+
+  test('described in words', () => {
+    const last: LastReported = {
+      media: { value: song, at: T0, since: T0 },
+      navigation: { value: { next_step: 'Turn left onto Jl. Kemang Raya', distance_text: '300 m', eta_text: '19:30' }, at: T0, since: T0 },
+      messages_on: { value: false, at: T0, since: T0 },
+    }
+    expect(describeGroup('notifications', last, T0 + 60_000)).toBe(
+      'Playing: Evaluasi – Hindia (Spotify); Navigating: Turn left onto Jl. Kemang Raya · 19:30; Replies paused · 1 min ago',
+    )
+  })
+
+  test('settings: action groups default on, stored ones kept, junk ignored', () => {
+    expect(migrate(null).actionGroups).toEqual({ media: true, messages: true, alarms: true, opening: true })
+    expect(migrate({ actionGroups: { messages: false, opening: 'no' } }).actionGroups).toEqual({ media: true, messages: false, alarms: true, opening: true })
+    expect(migrate({ senses: { places: false } }).senses.notifications).toBe(true)
+  })
+})

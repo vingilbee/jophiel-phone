@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { parsePushData } from '../push/plan'
 import { destinationTitle, mapsUrl } from './maps'
-import { DEFAULT_LIFETIME_MS, isExpired, navigateArgs, parseAction, resultFrame, type ActionResult, type NavigateArgs, type PhoneAction } from './protocol'
+import { DEFAULT_LIFETIME_MS, isExpired, navigateArgs, parseAction, resultFrame, type NavigateArgs, type PhoneAction } from './protocol'
 import { SEEN_KEEP, seenIds, type SeenStorage } from './seen'
-import { precheck, retryDelay, RETRY_DELAYS_MS, runAction, type ActionDeps, type PositionAnswer } from './run'
+import { precheck, retryDelay, RETRY_DELAYS_MS, runAction } from './run'
+import { fakeDeps, sw } from './testing'
 
 const NOW = Date.parse('2026-11-21T10:00:00.000Z')
 const LATER = '2026-11-21T10:01:00.000Z'
@@ -119,55 +120,25 @@ describe('mapsUrl', () => {
 })
 
 describe('precheck', () => {
-  const on = { actionsEnabled: true, placesOn: true }
+  const on = sw(true, true)
 
   test('in order: expired, the master switch, the Places group', () => {
-    expect(precheck(action(), NOW + 61_000, { actionsEnabled: false, placesOn: false })).toEqual({ status: 'expired' })
-    expect(precheck(action({ action: 'get_position' }), NOW, { actionsEnabled: false, placesOn: false })).toEqual({
+    expect(precheck(action(), NOW + 61_000, sw(false, false))).toEqual({ status: 'expired' })
+    expect(precheck(action({ action: 'get_position' }), NOW, sw(false, false))).toEqual({
       status: 'refused',
       reason: 'switched_off',
     })
-    expect(precheck(action({ action: 'get_position' }), NOW, { actionsEnabled: true, placesOn: false })).toEqual({
+    expect(precheck(action({ action: 'get_position' }), NOW, sw(true, false))).toEqual({
       status: 'refused',
       reason: 'places_off',
     })
   })
 
   test('the Places group does not block navigation', () => {
-    expect(precheck(action(), NOW, { actionsEnabled: true, placesOn: false })).toBeNull()
+    expect(precheck(action(), NOW, sw(true, false))).toBeNull()
     expect(precheck(action({ action: 'get_position' }), NOW, on)).toBeNull()
   })
 })
-
-function fakeDeps(partial: Partial<ActionDeps> = {}) {
-  const delivered: [string, ActionResult][] = []
-  const opened: [string, string][] = []
-  const claimed = new Set<string>()
-  const deps: ActionDeps = {
-    now: () => NOW,
-    claim: async (id) => {
-      if (claimed.has(id)) return false
-      claimed.add(id)
-      return true
-    },
-    switches: async () => ({ actionsEnabled: true, placesOn: true }),
-    openMaps: async (url, title) => {
-      opened.push([url, title])
-      return { status: 'done', reason: null }
-    },
-    position: async (): Promise<PositionAnswer> => ({ latitude: -6.2, longitude: 106.8, accuracy: 12.4, fixAt: NOW - 5_000 }),
-    places: async () => [
-      { id: 'p1', name: 'Work', latitude: 49.21, longitude: -123.1, radius: 150 },
-      { id: 'p2', name: 'Gym', latitude: 49.2, longitude: -123.11, radius: 150 },
-      { id: 'p3', name: 'gym ', latitude: 49.3, longitude: -123.2, radius: 150 },
-    ],
-    deliver: async (a, result) => {
-      delivered.push([a.actionId, result])
-    },
-    ...partial,
-  }
-  return { deps, delivered, opened }
-}
 
 describe('runAction', () => {
   test('navigate_to opens Maps and answers done once; a repeat is ignored', async () => {
@@ -185,7 +156,7 @@ describe('runAction', () => {
   })
 
   test('switched off: nothing opens, refused', async () => {
-    const { deps, delivered, opened } = fakeDeps({ switches: async () => ({ actionsEnabled: false, placesOn: true }) })
+    const { deps, delivered, opened } = fakeDeps({ switches: async () => (sw(false, true)) })
     await runAction(action(), deps)
     expect(opened).toEqual([])
     expect(delivered).toEqual([['a1', { status: 'refused', reason: 'switched_off' }]])
@@ -234,14 +205,14 @@ describe('runAction', () => {
   })
 
   test('resolve_saved_place is refused with Places off', async () => {
-    const { deps, delivered } = fakeDeps({ switches: async () => ({ actionsEnabled: true, placesOn: false }) })
+    const { deps, delivered } = fakeDeps({ switches: async () => (sw(true, false)) })
     await runAction(action({ action: 'resolve_saved_place', args: { name: 'work' } }), deps)
     expect(delivered).toEqual([['a1', { status: 'refused', reason: 'places_off' }]])
   })
 
   test('unknown actions and bad args fail; a throw fails too', async () => {
     const unknown = fakeDeps()
-    await runAction(action({ action: 'play_music' }), unknown.deps)
+    await runAction(action({ action: 'launch_rocket' }), unknown.deps)
     expect(unknown.delivered).toEqual([['a1', { status: 'failed', reason: 'unknown_action' }]])
 
     const bad = fakeDeps()
@@ -259,7 +230,7 @@ describe('runAction', () => {
       now: () => clock,
       switches: async () => {
         clock = NOW + 120_000 // a slow cold start, past the action's 60 s
-        return { actionsEnabled: true, placesOn: true }
+        return sw(true, true)
       },
     })
     await runAction(action(), deps)

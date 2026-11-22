@@ -1,7 +1,7 @@
 import type { PhoneField } from '@/chat/frames'
 
-/** The seven switch groups of Settings → Phone senses (the native module uses the same names). */
-export const SENSE_GROUPS = ['phoneUse', 'battery', 'headphones', 'network', 'soundMode', 'motion', 'places'] as const
+/** The switch groups of Settings → Phone senses (the native module uses the same names). */
+export const SENSE_GROUPS = ['phoneUse', 'battery', 'headphones', 'network', 'soundMode', 'motion', 'places', 'notifications'] as const
 
 export type SenseGroup = (typeof SENSE_GROUPS)[number]
 
@@ -15,6 +15,9 @@ export const GROUP_FIELDS: Record<SenseGroup, readonly PhoneField[]> = {
   soundMode: ['dnd', 'ringer'],
   motion: ['motion'],
   places: ['place'],
+  // Phase 8: the notifications themselves go in their own frames; these are what they add to the
+  // phone state. Whether her replies are paused only means something while she sees notifications.
+  notifications: ['media', 'navigation', 'messages_on'],
 }
 
 const FIELD_GROUP = Object.fromEntries(
@@ -27,7 +30,7 @@ export function groupOf(field: PhoneField): SenseGroup {
 
 /** All on by default (owner, 2026-11-21). */
 export function defaultSwitches(): SenseSwitches {
-  return { phoneUse: true, battery: true, headphones: true, network: true, soundMode: true, motion: true, places: true }
+  return { phoneUse: true, battery: true, headphones: true, network: true, soundMode: true, motion: true, places: true, notifications: true }
 }
 
 /** The groups that went from on to off. */

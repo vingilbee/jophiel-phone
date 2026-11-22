@@ -135,3 +135,22 @@ class RestoreReceiver : BroadcastReceiver() {
     }
   }
 }
+
+/**
+ * Phase 8: a phone-state field from the notification listener (`media`, `navigation`), sent by
+ * jophiel-notifications as an explicit broadcast to this class (not exported: only this app can).
+ */
+class FieldReceiver : BroadcastReceiver() {
+  override fun onReceive(context: Context, intent: Intent) {
+    val field = intent.getStringExtra("field") ?: return
+    val raw = intent.getStringExtra("value")
+    val value = if (raw == null) {
+      null
+    } else {
+      val parsed = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return
+      @Suppress("UNCHECKED_CAST")
+      (Store.normalize(parsed) as? Map<String, Any?>) ?: return
+    }
+    Senses.onField(context.applicationContext, field, value, intent.getLongExtra("at", System.currentTimeMillis()))
+  }
+}

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSyncExternalStore } from 'react'
+import { ACTION_GROUPS, defaultActionGroups, type ActionGroups } from '@/actions/groups'
 import { defaultSwitches, SENSE_GROUPS, type SenseSwitches } from '@/senses/groups'
 import { checkPlaces, type Place } from '@/senses/places'
 import { defaultServerUrl } from './defaults'
@@ -25,6 +26,8 @@ export interface PhoneSettings {
   places: Place[]
   /** Phase 7: "Let Jophiel act on this phone" (open Maps, give her position for one lookup). Kept on logout. */
   actionsEnabled: boolean
+  /** Phase 8: one switch per group of actions under the master switch (Media, Messages, Alarms & timers, Opening apps). */
+  actionGroups: ActionGroups
 }
 
 const KEY = 'jophiel.settings'
@@ -40,6 +43,7 @@ export function defaults(): PhoneSettings {
     senses: defaultSwitches(),
     places: [],
     actionsEnabled: true,
+    actionGroups: defaultActionGroups(),
   }
 }
 
@@ -55,6 +59,17 @@ function migrateSwitches(raw: unknown): SenseSwitches {
   return switches
 }
 
+function migrateActionGroups(raw: unknown): ActionGroups {
+  const groups = defaultActionGroups()
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return groups
+  const stored = raw as Record<string, unknown>
+  for (const group of ACTION_GROUPS) {
+    const value = stored[group]
+    if (typeof value === 'boolean') groups[group] = value
+  }
+  return groups
+}
+
 export function migrate(raw: unknown): PhoneSettings {
   const base = defaults()
   if (!raw || typeof raw !== 'object') return base
@@ -65,6 +80,10 @@ export function migrate(raw: unknown): PhoneSettings {
     // Objects and arrays are checked field by field; only primitives are kept by type below.
     if (key === 'senses') {
       kept.senses = migrateSwitches(value)
+      continue
+    }
+    if (key === 'actionGroups') {
+      kept.actionGroups = migrateActionGroups(value)
       continue
     }
     if (key === 'places') {

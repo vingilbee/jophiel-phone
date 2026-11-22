@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { AppState } from 'react-native'
 import { onSignOut } from '@/auth/session'
 import { getToken } from '@/auth/token'
+import { clearNotificationsReporting, configureNotifications, notificationsAvailable, setNotificationsReporting } from '@/notifications'
 import { locationPermission } from '@/setup/permissions'
 import { getSettings, useSettings } from '@/settings/store'
 import { checkPlaceNow, clearReporting, configureNative, phoneSenses, sensesAvailable, setReporting } from './native'
@@ -36,10 +37,12 @@ export function useSensesBridge() {
   const previous = useRef<{ places: unknown; placesOn: boolean } | null>(null)
 
   useEffect(() => {
-    if (!sensesAvailable) return
+    if (!sensesAvailable && !notificationsAvailable) return
     let cancelled = false
     void getToken().then((token) => {
-      if (!cancelled && token) setReporting(getSettings().serverUrl, token)
+      if (cancelled || !token) return
+      setReporting(getSettings().serverUrl, token)
+      setNotificationsReporting(getSettings().serverUrl, token)
     })
     return () => {
       cancelled = true
@@ -57,12 +60,24 @@ export function useSensesBridge() {
     if (AppState.currentState === 'active') void maybeCheckPlace(placesChanged)
   }, [settings.senses, settings.places])
 
+  // Phase 8: the Notifications sense and the Messages switch, mirrored natively (the listener runs
+  // with the app closed); whether her replies may go out goes to her as phone state (`messages_on`).
+  const messagesOn = settings.actionsEnabled && settings.actionGroups.messages
+  const firstMessages = useRef(true)
   useEffect(() => {
-    if (!sensesAvailable) return
+    configureNotifications(settings.senses.notifications, messagesOn)
+    phoneSenses.setLocal({ messages_on: messagesOn }, !firstMessages.current)
+    firstMessages.current = false
+  }, [settings.senses.notifications, messagesOn])
+
+  useEffect(() => {
+    if (!sensesAvailable && !notificationsAvailable) return
     const subscription = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return
-      const { senses, places } = getSettings()
+      const { senses, places, actionsEnabled, actionGroups } = getSettings()
       configureNative(senses, places)
+      // Also asks Android to bind the listener again if Samsung's battery saver dropped it.
+      configureNotifications(senses.notifications, actionsEnabled && actionGroups.messages)
       void maybeCheckPlace(false)
     })
     return () => subscription.remove()
@@ -73,6 +88,7 @@ export function useSensesBridge() {
       onSignOut(() => {
         phoneSenses.reset()
         clearReporting()
+        clearNotificationsReporting()
         lastPlaceCheck = 0
       }),
     [],

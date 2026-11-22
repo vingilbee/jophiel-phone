@@ -345,7 +345,12 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
     }
 
     case 'phone_activity': {
-      if (state.messages.some((m) => m.id === frame.message_id) || !frame.text.trim()) return state
+      if (!frame.text.trim()) return state
+      if (state.messages.some((m) => m.id === frame.message_id)) {
+        // A late answer replaces its "sent, no answer yet" line: new text, same place and time.
+        if (!frame.replaces) return state
+        return { ...state, messages: state.messages.map((m) => (m.id === frame.message_id ? { ...m, text: frame.text } : m)) }
+      }
       // Another conversation's line (the phone shows the primary one only).
       if (frame.conversation_id && state.conversationId && frame.conversation_id !== state.conversationId) return state
       const item: ChatItem = {

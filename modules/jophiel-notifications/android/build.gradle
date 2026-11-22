@@ -1,0 +1,22 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.jophiel.notifications'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.jophielnotifications"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // Background sends (POST /api/phone/notifications) with a network constraint and backoff.
+  implementation 'androidx.work:work-runtime:2.10.5'
+
+  testImplementation 'junit:junit:4.13.2'
+}

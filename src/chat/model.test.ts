@@ -307,6 +307,16 @@ describe('phone activity lines (phase 7)', () => {
     expect(visibleItems(s)).toHaveLength(1)
   })
 
+  test('a late answer replaces the "no answer yet" line in place; a plain repeat does not', () => {
+    const pending: ServerFrame = { ...line, text: 'Sent to your phone, no answer yet' }
+    let s = run(initialChatState, { type: 'history', conversation_id: 'c1', messages: [] }, pending)
+    s = run(s, { ...line, text: 'Opened Maps (other text)' })
+    expect(visibleItems(s).map((i) => i.text)).toEqual(['Sent to your phone, no answer yet'])
+    s = run(s, { ...line, text: 'Opened Maps → Kemang Village', created_at: '2026-11-20T09:31:00', replaces: true })
+    const items = visibleItems(s)
+    expect(items.map((i) => [i.id, i.text, i.at])).toEqual([['p1', 'Opened Maps → Kemang Village', '2026-11-20T09:30:00Z']])
+  })
+
   test('history entries of kind phone_activity are lines and do not settle a turn', () => {
     let s = enqueue(initialChatState, 't1')
     s = run(s, { type: 'ack', turn_id: 't1', user_message_id: 'm1', conversation_id: 'c1' })

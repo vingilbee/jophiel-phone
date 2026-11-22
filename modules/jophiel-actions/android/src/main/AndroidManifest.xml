@@ -4,10 +4,38 @@
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
   <!-- Wakes the screen to start navigation with the phone in your pocket (no PIN needed). -->
   <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+  <!-- Phase 8: alarms and timers in the clock app; ringer mode / Do Not Disturb (DND access). -->
+  <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+  <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+  <!-- WhatsApp drafts to a named contact (the number never leaves the phone). -->
+  <uses-permission android:name="android.permission.READ_CONTACTS" />
 
-  <!-- Android 11 package visibility: is Google Maps installed? -->
+  <!-- Android 11 package visibility: the apps she opens, and which apps handle what. -->
   <queries>
     <package android:name="com.google.android.apps.maps" />
+    <package android:name="com.spotify.music" />
+    <package android:name="com.whatsapp" />
+    <!-- open_app: any app on the launcher. -->
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.SET_ALARM" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.SET_TIMER" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <category android:name="android.intent.category.BROWSABLE" />
+      <data android:scheme="https" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <category android:name="android.intent.category.BROWSABLE" />
+      <data android:scheme="http" />
+    </intent>
   </queries>
 
   <application>

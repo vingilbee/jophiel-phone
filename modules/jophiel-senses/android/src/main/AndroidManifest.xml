@@ -25,6 +25,11 @@
       android:name="expo.modules.jophielsenses.MotionReceiver"
       android:exported="false" />
 
+    <!-- Phase 8: now playing / the Maps trip from the notification listener (this app only). -->
+    <receiver
+      android:name="expo.modules.jophielsenses.FieldReceiver"
+      android:exported="false" />
+
     <!--
       Sent by the Bluetooth stack (its own uid, not the system's), so exported. Nothing in the
       broadcast is trusted: headphones are read again from AudioManager.
