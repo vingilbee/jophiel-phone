@@ -32,10 +32,11 @@ class MapsLogicTest {
   }
 
   @Test
-  fun android15NeedsAVisibleOverlayWindow() {
+  fun android15OpensBehindABriefOverlayWindow() {
     val behind = base.copy(appOnScreen = false, canDrawOverlays = true, sdk = 35)
-    assertEquals(Choice(Path.NOTIFY, "background"), MapsLogic.choose(behind))
+    assertEquals(Choice(Path.OVERLAY), MapsLogic.choose(behind))
     assertEquals(Choice(Path.OPEN), MapsLogic.choose(behind.copy(overlayVisible = true)))
+    assertEquals(Choice(Path.NOTIFY, "background"), MapsLogic.choose(behind.copy(canDrawOverlays = false)))
   }
 
   @Test

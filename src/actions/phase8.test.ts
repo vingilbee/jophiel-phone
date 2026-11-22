@@ -147,7 +147,8 @@ describe('phase 8 dispatch', () => {
     const draft = await run('whatsapp_draft', { to: 'Rina', text: 'hi' }, {
       whatsappDraft: async () => ({ status: 'notified', reason: 'background', data: { target: 'picker' } }),
     })
-    expect(draft.result).toEqual({ status: 'notified', reason: 'background', data: { target: 'picker' } })
+    // The backend takes `data` only with `done`: a notified draft goes without its target.
+    expect(draft.result).toEqual({ status: 'notified', reason: 'background' })
     const gone = await run('reply_notification', { key: 'n_1', text: 'hi' }, { reply: async () => ({ status: 'failed', reason: 'notification_gone' }) })
     expect(gone.result).toEqual({ status: 'failed', reason: 'notification_gone' })
   })

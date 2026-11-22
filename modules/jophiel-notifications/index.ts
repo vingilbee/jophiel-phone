@@ -43,6 +43,8 @@ declare class JophielNotificationsModule extends NativeModule<JophielNotificatio
   reply(key: string, conversationId: string | null, revision: number | null, text: string): Promise<ListenerAnswer>
   dismiss(key: string): Promise<ListenerAnswer>
   mediaControl(command: 'play' | 'pause' | 'next' | 'previous'): Promise<ListenerAnswer>
+  /** Top hit for `query` through the app's media session (no app opened); `no_media_session` when it has none. */
+  playFromSearch(packageName: string, query: string): Promise<ListenerAnswer>
 }
 
 /** Null in a build made before this module existed: rebuild with `bunx expo run:android`. */

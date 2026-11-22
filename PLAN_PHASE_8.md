@@ -383,3 +383,27 @@ is open.
 - Google Maps' navigation notification layout is a guess (title = distance, text = instruction, sub
   text = time left / arrival); the parser fails soft. Check what Maps really shows.
 - Samsung's "Allow restricted settings" path; whether replies work locked; a busy group chat.
+
+## S21 pass (8.7), first round (2026-11-22, Android 15)
+
+Worked: notifications reach the backend (59 live, all apps), now playing (`media`), `messages_on`,
+`open_app` with Jophiel in front, play / pause through the media session, WhatsApp draft via the
+picker, Spotify play-from-search with Jophiel in front.
+
+Found and fixed (same day):
+- **Answers rejected**: the backend takes `data` only with `done`, and `notified` only from opening
+  actions. A `notified` `open_app` carried `opened`, so the whole answer was dropped ("sent, no
+  answer yet"). Now `data` goes only with `done`; alarms / timers never answer `notified` (they
+  answer `failed`, `background` / `screen_off` when Android won't let the clock app start).
+- **Android 15, another app in front**: opening became "Tap to …" every time. Now a 1-pixel,
+  transparent, untouchable overlay window shows for a moment and the activity starts behind it
+  (`Path.OVERLAY`; Maps too). Needs "Display over other apps". Still a notification when the
+  screen is off or locked.
+- **Spotify**: play-from-search by intent only searched when Spotify was already open. Now
+  `play_music` goes through Spotify's media session first (`playFromSearch`, no app opened, works
+  locked); the intent is the fallback when Spotify has no session.
+- **Dismiss** of a notification that can't be swiped away (Spotify's listening party) answered `done`
+  but nothing happened: now `failed`, `not_clearable`.
+
+Still to check: the overlay path on the S21, replies (no chat notification with a reply button came
+in during the test), the Maps trip, a busy group chat, restricted settings.

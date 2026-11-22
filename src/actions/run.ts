@@ -103,6 +103,8 @@ export function precheck(action: PhoneAction, now: number, switches: ActionSwitc
 function answered(answer: DeviceAnswer): ActionResult {
   const result: ActionResult = { status: answer.status }
   if (answer.reason) result.reason = answer.reason
+  // The backend takes `data` only with `done` (a `notified` open_app carrying `opened` is rejected whole).
+  if (answer.status !== 'done') return result
   if (answer.data?.opened) result.data = { opened: answer.data.opened }
   else if (answer.data?.target) result.data = { target: answer.data.target }
   return result

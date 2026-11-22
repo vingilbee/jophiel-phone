@@ -25,6 +25,11 @@ internal enum class Path {
   WAKE,
   /** Only the "Tap to start navigation" notification. */
   NOTIFY,
+  /**
+   * Android 15+, another app in front, "Display over other apps" allowed: show a 1-pixel overlay
+   * window for a moment (Android lets an app with a visible overlay start activities), then open.
+   */
+  OVERLAY,
 }
 
 internal data class Choice(val path: Path, val reason: String? = null)
@@ -41,8 +46,8 @@ internal object MapsLogic {
     val unlockedAndOn = s.screenOn && !s.keyguardLocked
     if (unlockedAndOn) {
       if (s.appOnScreen) return Choice(Path.OPEN)
-      val overlayCounts = s.canDrawOverlays && (s.sdk < SDK_OVERLAY_NEEDS_WINDOW || s.overlayVisible)
-      return if (overlayCounts) Choice(Path.OPEN) else Choice(Path.NOTIFY, "background")
+      if (!s.canDrawOverlays) return Choice(Path.NOTIFY, "background")
+      return if (s.sdk < SDK_OVERLAY_NEEDS_WINDOW || s.overlayVisible) Choice(Path.OPEN) else Choice(Path.OVERLAY)
     }
     // Screen off, or the lock screen is showing.
     if (s.deviceLocked) return Choice(Path.NOTIFY, "locked")

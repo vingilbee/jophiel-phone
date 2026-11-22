@@ -96,6 +96,16 @@ internal object Maps {
       Path.OPEN -> openNow(context, activity, url, title, done)
       Path.NOTIFY -> done(notifyOnly(context, url, title, choice.reason))
       Path.WAKE -> wake(context, url, title, done)
+      Path.OVERLAY -> Overlay.start(context, intent(url)) { reason ->
+        when (reason) {
+          null -> {
+            cancelNotification(context)
+            done(Outcome("done"))
+          }
+          "app_not_found" -> done(Outcome("failed", "maps_missing"))
+          else -> done(notifyOnly(context, url, title, "background"))
+        }
+      }
     }
   }
 

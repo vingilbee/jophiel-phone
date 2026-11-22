@@ -143,6 +143,11 @@ class JophielNotificationListener : NotificationListenerService() {
         done(Answer("failed", "notification_gone"))
         return@post
       }
+      // Ongoing ones (a listening party, a download) can't be swiped away, so they can't be dismissed either.
+      if (!entry.sbn.isClearable) {
+        done(Answer("failed", "not_clearable"))
+        return@post
+      }
       try {
         cancelNotification(entry.sbn.key)
         done(Answer("done"))
@@ -150,6 +155,13 @@ class JophielNotificationListener : NotificationListenerService() {
         Log.w(TAG, "dismiss failed", e)
         done(Answer("failed", "error"))
       }
+    }
+  }
+
+  internal fun playFromSearch(packageName: String, query: String, done: (Answer) -> Unit) {
+    worker.post {
+      val reason = media?.playFromSearch(packageName, query) ?: if (media == null) "no_media_session" else null
+      done(if (reason == null) Answer("done") else Answer("failed", reason))
     }
   }
 

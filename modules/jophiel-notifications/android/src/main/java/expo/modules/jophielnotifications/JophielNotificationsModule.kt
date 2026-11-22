@@ -118,6 +118,12 @@ class JophielNotificationsModule : Module() {
       listener.dismiss(key) { promise.resolve(answer(it)) }
     }
 
+    /** Play the top hit for `query` through that app's media session (Spotify), without opening it. */
+    AsyncFunction("playFromSearch") { packageName: String, query: String, promise: Promise ->
+      val listener = listener(promise) ?: return@AsyncFunction
+      listener.playFromSearch(packageName, query) { promise.resolve(answer(it)) }
+    }
+
     /** play / pause / next / previous on what's playing. */
     AsyncFunction("mediaControl") { command: String, promise: Promise ->
       val listener = listener(promise) ?: return@AsyncFunction

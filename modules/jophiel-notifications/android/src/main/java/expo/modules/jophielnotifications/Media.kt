@@ -129,6 +129,22 @@ internal class Media(private val context: Context, private val component: Compon
     if (Store.enabled(context)) Fields.report(context, "media", now)
   }
 
+  /**
+   * Play the top hit for `query` in that app through its media session (Spotify supports it): no
+   * activity is started, so it works with another app in front and the phone locked. null: done.
+   * Only when the app has a session (it ran recently); otherwise the caller opens the app.
+   */
+  fun playFromSearch(packageName: String, query: String): String? {
+    val c = controllers.firstOrNull { it.packageName == packageName } ?: return "no_media_session"
+    return try {
+      c.transportControls.playFromSearch(query, android.os.Bundle())
+      null
+    } catch (e: Exception) {
+      Log.w(TAG, "play from search failed", e)
+      "error"
+    }
+  }
+
   /** null: done; otherwise the reason it couldn't. */
   fun control(command: String): String? {
     val c = current() ?: return "no_media_session"

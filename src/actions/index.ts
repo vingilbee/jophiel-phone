@@ -80,6 +80,8 @@ async function call(run: (() => Promise<DeviceAnswer>) | null): Promise<DeviceAn
   }
 }
 
+const SPOTIFY = 'com.spotify.music'
+
 const A = JophielActions
 const N = JophielNotifications
 
@@ -94,7 +96,14 @@ const device: DeviceDeps = {
   reply: ({ key, conversationId, revision, text }) => call(N && (() => N.reply(key, conversationId, revision, text))),
   openApp: (name) => call(A && (() => A.openApp(name))),
   openLink: (url) => call(A && (() => A.openLink(url))),
-  playMusic: (query) => call(A && (() => A.playMusic(query))),
+  // Spotify's media session first (plays in the background, also locked); else open Spotify searching.
+  playMusic: async (query) => {
+    if (N) {
+      const viaSession = await call(() => N.playFromSearch(SPOTIFY, query))
+      if (viaSession.status === 'done') return viaSession
+    }
+    return call(A && (() => A.playMusic(query)))
+  },
   whatsappDraft: (to, text) => call(A && (() => A.whatsappDraft(to, text))),
 }
 

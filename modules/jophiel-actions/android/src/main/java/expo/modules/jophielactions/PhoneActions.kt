@@ -33,10 +33,37 @@ internal object Opener {
   private const val NOTIFICATION_ID = 7002
   private const val NOTIFICATION_TIMEOUT_MS = 10 * 60_000L
 
-  fun start(context: Context, activity: Activity?, intent: Intent, tapTitle: String, data: Map<String, Any?>? = null): Result {
+  /**
+   * `canNotify`: false for actions the backend doesn't take `notified` from (alarms, timers): those
+   * answer `failed` with the reason instead of posting a notification.
+   */
+  fun start(
+    context: Context,
+    activity: Activity?,
+    intent: Intent,
+    tapTitle: String,
+    data: Map<String, Any?>? = null,
+    canNotify: Boolean = true,
+  ): Result {
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    fun fallback(reason: String?): Result =
+      if (canNotify) notify(context, intent, tapTitle, reason) else Result("failed", reason ?: "background")
     val choice = MapsLogic.choose(Maps.situation(context))
-    if (choice.path != Path.OPEN) return notify(context, intent, tapTitle, if (choice.path == Path.WAKE) "screen_off" else choice.reason, data)
+    when (choice.path) {
+      Path.OPEN -> Unit
+      Path.OVERLAY -> {
+        return when (val reason = Overlay.startBlocking(context, intent)) {
+          null -> {
+            NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+            Result("done", data = data)
+          }
+          "app_not_found" -> Result("failed", "app_not_found")
+          else -> fallback(if (reason == "open_failed") "open_failed" else "background")
+        }
+      }
+      Path.WAKE -> return fallback("screen_off")
+      Path.NOTIFY -> return fallback(choice.reason)
+    }
     return try {
       (activity ?: context).startActivity(intent)
       NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
@@ -45,11 +72,12 @@ internal object Opener {
       Result("failed", "app_not_found")
     } catch (e: Exception) {
       Log.w(TAG, "opening failed", e)
-      notify(context, intent, tapTitle, "open_failed", data)
+      fallback("open_failed")
     }
   }
 
-  private fun notify(context: Context, intent: Intent, title: String, reason: String?, data: Map<String, Any?>?): Result {
+  /** `notified` never carries `data` (the backend takes it only with `done`). */
+  private fun notify(context: Context, intent: Intent, title: String, reason: String?): Result {
     val notifications = NotificationManagerCompat.from(context)
     if (!notifications.areNotificationsEnabled()) return Result("failed", "notifications_off")
     Maps.ensureChannel(context)
@@ -74,7 +102,7 @@ internal object Opener {
       .build()
     return try {
       notifications.notify(NOTIFICATION_ID, notification)
-      Result("notified", reason, data)
+      Result("notified", reason)
     } catch (e: SecurityException) {
       Result("failed", "notifications_off")
     }
@@ -151,7 +179,7 @@ internal object PhoneActions {
     if (!label.isNullOrBlank()) intent.putExtra(AlarmClock.EXTRA_MESSAGE, label)
     if (days.isNotEmpty()) intent.putExtra(AlarmClock.EXTRA_DAYS, ArrayList(days))
     if (intent.resolveActivity(context.packageManager) == null) return Result("failed", "app_not_found")
-    return Opener.start(context, activity, intent, "Tap to set the alarm for %02d:%02d".format(hour, minute))
+    return Opener.start(context, activity, intent, "Tap to set the alarm for %02d:%02d".format(hour, minute), canNotify = false)
   }
 
   fun setTimer(context: Context, activity: Activity?, seconds: Int, label: String?): Result {
@@ -160,7 +188,7 @@ internal object PhoneActions {
       .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
     if (!label.isNullOrBlank()) intent.putExtra(AlarmClock.EXTRA_MESSAGE, label)
     if (intent.resolveActivity(context.packageManager) == null) return Result("failed", "app_not_found")
-    return Opener.start(context, activity, intent, "Tap to start the timer")
+    return Opener.start(context, activity, intent, "Tap to start the timer", canNotify = false)
   }
 
   // ---- Opening things ----
