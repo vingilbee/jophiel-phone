@@ -320,7 +320,7 @@ const DELAYED_MS = 10_000
 
 function resultText(result: ActionResult | null): string {
   if (!result) return 'Already handled'
-  const accuracy = result.data ? ` (position to ±${result.data.accuracy_m} m, not shown)` : ''
+  const accuracy = result.data && 'accuracy_m' in result.data ? ` (position to ±${result.data.accuracy_m} m, not shown)` : ''
   return `${result.status}${result.reason ? `: ${result.reason}` : ''}${accuracy}`
 }
 

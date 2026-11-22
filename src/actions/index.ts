@@ -111,6 +111,7 @@ const deps: ActionDeps = {
     if (!JophielSenses) return { error: 'not_supported' }
     return JophielSenses.positionOnce()
   },
+  places: async () => (await loadSettings()).places,
   deliver,
 }
 

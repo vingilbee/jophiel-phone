@@ -14,7 +14,7 @@ const MODES: readonly TravelMode[] = ['drive', 'two_wheeler', 'walk', 'transit',
 
 export interface PhoneAction {
   actionId: string
-  /** `navigate_to`, `get_position`; others (phase 8) answer `failed`, `unknown_action` until supported. */
+  /** `navigate_to`, `get_position`, `resolve_saved_place`; others (phase 8) answer `failed`, `unknown_action` until supported. */
   action: string
   args: Record<string, unknown>
   /** Epoch ms after which it's dropped as `expired`. */
@@ -33,10 +33,16 @@ export interface PositionData {
   fix_at: string
 }
 
+/** `resolve_saved_place` only: the saved place's stored centre (no live fix). */
+export interface PlaceData {
+  lat: number
+  lng: number
+}
+
 export interface ActionResult {
   status: ResultStatus
   reason?: string
-  data?: PositionData
+  data?: PositionData | PlaceData
 }
 
 export interface PhoneActionResultFrame extends ActionResult {

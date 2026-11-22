@@ -1,4 +1,5 @@
 import { destinationTitle, mapsUrl } from './maps'
+import type { Place } from '@/senses/places'
 import { isExpired, navigateArgs, type ActionResult, type PhoneAction, type PositionData } from './protocol'
 
 export type PositionAnswer =
@@ -14,6 +15,8 @@ export interface ActionDeps {
   switches: () => Promise<{ actionsEnabled: boolean; placesOn: boolean }>
   openMaps: (url: string, title: string) => Promise<{ status: 'done' | 'notified' | 'failed'; reason: string | null }>
   position: () => Promise<PositionAnswer>
+  /** Settings → Places (phase 6), for `resolve_saved_place`. */
+  places: () => Promise<Place[]>
   /** Hand the result to the backend (socket, else the API); skipped for local actions. */
   deliver: (action: PhoneAction, result: ActionResult) => Promise<void>
 }
@@ -21,7 +24,7 @@ export interface ActionDeps {
 /**
  * The checks every action passes, in order: too late → `expired`; the master switch → `refused`,
  * `switched_off`; per action (`get_position`: the Places group → `refused`, `places_off`). Null: go
- * ahead. Permission and "location is on" are read natively when the position is taken.
+ * ahead. `resolve_saved_place` needs the Places group too. Permission and "location is on" are read natively when the position is taken.
  */
 export function precheck(
   action: PhoneAction,
@@ -30,7 +33,8 @@ export function precheck(
 ): ActionResult | null {
   if (isExpired(action, now)) return { status: 'expired' }
   if (!switches.actionsEnabled) return { status: 'refused', reason: 'switched_off' }
-  if (action.action === 'get_position' && !switches.placesOn) return { status: 'refused', reason: 'places_off' }
+  const usesPlaces = action.action === 'get_position' || action.action === 'resolve_saved_place'
+  if (usesPlaces && !switches.placesOn) return { status: 'refused', reason: 'places_off' }
   return null
 }
 
@@ -52,6 +56,23 @@ async function getPosition(deps: ActionDeps): Promise<ActionResult> {
     fix_at: new Date(answer.fixAt).toISOString(),
   }
   return { status: 'done', data }
+}
+
+/** Trimmed, case-insensitive, inner spaces collapsed: "  Work " is "work". */
+function placeKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/** "From work to …": a saved place's centre by its name. None → `not_found`, several → `ambiguous`. */
+async function resolveSavedPlace(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
+  const name = action.args.name
+  if (typeof name !== 'string' || !name.trim()) return { status: 'failed', reason: 'bad_args' }
+  const key = placeKey(name)
+  const matches = (await deps.places()).filter((place) => placeKey(place.name) === key)
+  const [place, other] = matches
+  if (!place) return { status: 'failed', reason: 'not_found' }
+  if (other) return { status: 'failed', reason: 'ambiguous' }
+  return { status: 'done', data: { lat: place.latitude, lng: place.longitude } }
 }
 
 /**
@@ -76,6 +97,8 @@ function perform(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
       return navigate(action, deps)
     case 'get_position':
       return getPosition(deps)
+    case 'resolve_saved_place':
+      return resolveSavedPlace(action, deps)
     default:
       return Promise.resolve({ status: 'failed', reason: 'unknown_action' })
   }

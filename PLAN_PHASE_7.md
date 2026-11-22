@@ -293,7 +293,8 @@ without it. 7.6 (S21 pass) is still open.
 | `notified` | `open_failed` | Android refused to open Maps |
 | `failed` | `maps_missing` / `notifications_off` / `bad_args` / `unknown_action` / `not_supported` (old build) / `error` | as named |
 | `refused` | `switched_off` | "Let Jophiel act on this phone" is off (any action) |
-| `refused` | `places_off` | `get_position` with the phase 6 Places group off |
+| `refused` | `places_off` | `get_position` / `resolve_saved_place` with the phase 6 Places group off |
+| `failed` | `not_found` / `ambiguous` | `resolve_saved_place`: no saved place by that name / several (trimmed, case-insensitive) |
 | `refused` | `no_permission` / `location_off` | `get_position`: no precise location (or no "all the time" with the app closed) / location off on the phone |
 | `failed` | `no_fix` | `get_position`: no fix within 10 s |
 | `expired` | — | arrived after `expires_at` |
@@ -307,7 +308,32 @@ without it. 7.6 (S21 pass) is still open.
 - Place search: a list (or `{ results: [...] }`) of `{ name, address, lat, lng }`. A 404 reads
   "the server doesn't offer place search yet", a 503 "unavailable right now".
 
-**Device checks still open (7.6)**: everything in the table on the S21 (Smart Lock + earphones,
-PIN, another app on screen, swiped away, position with the app closed, a late push), and whether a
-background start with "Display over other apps" really opens Maps on One UI (Android drops a
-refused start silently, so the phone would answer `done` without Maps opening).
+**Added after the backend landed**: `resolve_saved_place {name}` (the backend's addition, for "from
+work to …"): `done` with `data: {lat, lng}`, the saved place's stored centre, no live fix.
+
+## S21 pass (7.6), 2026-11-22
+
+Android 15 (One UI 7), backend local over `adb reverse` (wireless debugging; the reverse is lost on
+every reconnect, re-run `adb reverse tcp:8000 tcp:8000 && adb reverse tcp:8081 tcp:8081`).
+
+| Check | Result |
+|---|---|
+| Route time with her one-off position ("nearest Superstore by walking") | ✅ 22 min / 1.6 km, "Used your location once" line |
+| "Where am I" | ✅ street + area |
+| Navigate, Jophiel on screen | ✅ Maps opens navigating |
+| Navigate, locked with a PIN | ✅ notification (`locked`) |
+| Navigate, another app on screen (during a call) | ✅ notification (`background`, Android 15 as expected) |
+| Position with the app off screen, location "while using the app" | `refused: no_permission` — expected; works after "Allow all the time" (owner's choice, no code change) |
+| Pocket path (Smart Lock, screen off) | open |
+| App swiped away, ask from the web app (push) | open |
+| Places → find an address | open |
+| The two Setup steps | open |
+| A late push (`expired`) | open |
+| `resolve_saved_place` ("from work to …") | open (new build of the JS) |
+
+Seen: when location was refused she first said she couldn't get it, then, asked, said it worked a
+moment earlier: correct, the earlier lookups ran while Jophiel was on screen.
+
+Not phase 7: following the trip turn by turn. Maps doesn't share its navigation; she knows only the
+route summary. Candidate for phase 8: read Maps' navigation notification once notification access
+exists.

@@ -155,6 +155,11 @@ function fakeDeps(partial: Partial<ActionDeps> = {}) {
       return { status: 'done', reason: null }
     },
     position: async (): Promise<PositionAnswer> => ({ latitude: -6.2, longitude: 106.8, accuracy: 12.4, fixAt: NOW - 5_000 }),
+    places: async () => [
+      { id: 'p1', name: 'Work', latitude: 49.21, longitude: -123.1, radius: 150 },
+      { id: 'p2', name: 'Gym', latitude: 49.2, longitude: -123.11, radius: 150 },
+      { id: 'p3', name: 'gym ', latitude: 49.3, longitude: -123.2, radius: 150 },
+    ],
     deliver: async (a, result) => {
       delivered.push([a.actionId, result])
     },
@@ -210,6 +215,27 @@ describe('runAction', () => {
       await runAction(action({ action: 'get_position', args: {} }), deps)
       expect(delivered).toEqual([['a1', { status, reason: error }]])
     }
+  })
+
+  test('resolve_saved_place: the centre of the one match, else not_found / ambiguous', async () => {
+    const resolve = (name: unknown) => action({ action: 'resolve_saved_place', args: { name } })
+    for (const [name, result] of [
+      ['  WORK ', { status: 'done', data: { lat: 49.21, lng: -123.1 } }],
+      ['school', { status: 'failed', reason: 'not_found' }],
+      ['Gym', { status: 'failed', reason: 'ambiguous' }],
+      ['  ', { status: 'failed', reason: 'bad_args' }],
+      [undefined, { status: 'failed', reason: 'bad_args' }],
+    ] as const) {
+      const { deps, delivered } = fakeDeps()
+      await runAction(resolve(name), deps)
+      expect(delivered).toEqual([['a1', result]])
+    }
+  })
+
+  test('resolve_saved_place is refused with Places off', async () => {
+    const { deps, delivered } = fakeDeps({ switches: async () => ({ actionsEnabled: true, placesOn: false }) })
+    await runAction(action({ action: 'resolve_saved_place', args: { name: 'work' } }), deps)
+    expect(delivered).toEqual([['a1', { status: 'refused', reason: 'places_off' }]])
   })
 
   test('unknown actions and bad args fail; a throw fails too', async () => {
