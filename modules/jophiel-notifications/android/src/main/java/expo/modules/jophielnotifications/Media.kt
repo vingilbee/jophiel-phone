@@ -81,8 +81,10 @@ internal class Media(private val context: Context, private val component: Compon
 
   private fun track(list: List<MediaController>) {
     controllers.forEach { runCatching { it.unregisterCallback(callback) } }
-    controllers = list
-    list.forEach { runCatching { it.registerCallback(callback, handler) } }
+    // Jophiel's own session (the voice call's, always "playing") is never what she means: with it
+    // counted, play / pause went to it once Spotify was paused.
+    controllers = list.filter { it.packageName != context.packageName }
+    controllers.forEach { runCatching { it.registerCallback(callback, handler) } }
     changed()
   }
 
