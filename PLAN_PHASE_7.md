@@ -259,7 +259,7 @@ per mode.
 
 Steps 7.1–7.5 are built on the phone side, against the contract above. The backend (7.0) doesn't exist
 yet, so nothing has run end to end; the developer screen's "Phone actions" tests run the phone half
-without it. 7.6 (S21 pass) is still open.
+without it. 7.6 (S21 pass) done 2026-11-22, see the end of this file.
 
 **Where it lives**
 - `modules/jophiel-actions` (Kotlin): `MapsLogic.choose` is the table above as a pure function
@@ -327,9 +327,9 @@ every reconnect, re-run `adb reverse tcp:8000 tcp:8000 && adb reverse tcp:8081 t
 | Pocket path (Samsung "Extend Unlock" = Smart Lock, earbuds trusted, screen off) | ✅ screen wakes, Maps opens by itself |
 | App swiped away, ask from the web app (push) | ✅ arrives by push, notification (app not on screen) |
 | Places → find an address | ✅ search, pick, save |
-| The two Setup steps | open |
-| A late push (`expired`) | open |
-| `resolve_saved_place` ("from work to …") | open (new build of the JS) |
+| The two Setup steps | ✅ |
+| A late push (`expired`) | not tested on the device (hard to cause by hand); covered by `bun test` |
+| `resolve_saved_place` ("from work to …") | ✅ |
 
 Seen: when location was refused she first said she couldn't get it, then, asked, said it worked a
 moment earlier: correct, the earlier lookups ran while Jophiel was on screen.
