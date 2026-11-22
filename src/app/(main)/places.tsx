@@ -12,6 +12,7 @@ import {
   MAX_PLACES,
   newPlaceId,
   placeName,
+  reservedPlaceName,
   RADIUS_CHOICES,
   radiusLabel,
   type Place,
@@ -87,6 +88,10 @@ export default function Places() {
     const clean = placeName(name)
     if (!clean) {
       setNameError('Give it a name, like “home” or “the gym”.')
+      return
+    }
+    if (reservedPlaceName(clean)) {
+      setNameError('“Away” is what Jophiel hears when you’re at none of your places. Pick another name.')
       return
     }
     const current = getSettings().places

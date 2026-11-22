@@ -67,7 +67,10 @@ export class PhoneSenses {
 
   /**
    * Live readers on (app visible, or a call keeping it alive) or off. Turning on reads everything
-   * once; the caller sends a `sense` frame right after, which carries what changed meanwhile.
+   * once and forgets what this socket was sent, so the `sense` frame the caller sends right after
+   * carries every known field again, changed or not: the server confirms as current only what the
+   * phone sent since it last went live (backend `phone_state.report`, `confirm`), so an unchanged
+   * value left out would be said to be old while the app is watching it.
    */
   setLive(on: boolean) {
     if (on === this.live || !this.native) return
@@ -75,6 +78,7 @@ export class PhoneSenses {
     if (on) {
       this.native.startLive()
       this.ingestSnapshot()
+      this.sent = {}
     } else {
       this.native.stopLive()
     }

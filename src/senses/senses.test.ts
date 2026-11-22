@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import { PhoneSenses, type SensesLink, type SensesNative } from './controller'
 import { agoLabel, describeGroup, type LastReported } from './describe'
 import { defaultSwitches, groupOf, switchedOff, type SenseSwitches } from './groups'
-import { checkPlaces, placeName, radiusLabel } from './places'
+import { AWAY, checkPlaces, placeName, radiusLabel, reservedPlaceName, unreservedName } from './places'
 import { changes, checkFields, checkValue, clip, effective } from './report'
 
 // The settings store persists with AsyncStorage and reads expo-device: stand-ins, so migrate loads under bun.
@@ -188,6 +188,21 @@ describe('phone senses controller', () => {
     expect(fake.calls.stopLive).toBe(1)
   })
 
+  test('live again on the same socket: every known field goes out again, changed or not', () => {
+    // Backgrounded briefly (no call), back within the socket's grace: the server only counts as current what
+    // the phone sent since it went live, so unchanged headphones must be sent again.
+    const { senses, socket, advance } = setup({ battery: 64, headphones: true })
+    senses.setLive(true)
+    socket.link.sendSense()
+    senses.setLive(false)
+    advance(20_000)
+    senses.setLive(true)
+    socket.link.sendSense()
+    expect(socket.frames[1]).toEqual({ battery: 64, headphones: true, observed_at: '2026-11-21T10:00:20.000Z' })
+    socket.link.sendSense()
+    expect(socket.frames[2]).toBeNull()
+  })
+
   test('switching a group off sends null once over the socket', () => {
     const { senses, socket } = setup({ battery: 64, charging: false, screen: 'on' })
     senses.setLive(true)
@@ -335,6 +350,13 @@ describe('places', () => {
   test('names: trimmed, single spaces, at most 60 characters, empty is no name', () => {
     expect(placeName('  the   gym ')).toBe('the gym')
     expect(placeName('   ')).toBeNull()
+    expect(reservedPlaceName('Away')).toBe(true)
+    expect(reservedPlaceName('away from home')).toBe(false)
+    expect(AWAY).toBe('away')
+    expect(unreservedName('home')).toBe('home')
+    // A place an older version saved as "away" loads renamed, so entering it is never heard as leaving.
+    const [legacy] = checkPlaces([{ id: 'p1', name: 'Away', latitude: 1, longitude: 2, radius: 100 }])
+    expect(legacy?.name).toBe('Away (place)')
     expect(placeName('a'.repeat(70))).toHaveLength(60)
   })
 
@@ -406,7 +428,8 @@ describe('what Settings shows', () => {
     const since = new Date(now - 8 * 60_000)
     const hhmm = `${String(since.getHours()).padStart(2, '0')}:${String(since.getMinutes()).padStart(2, '0')}`
     expect(describeGroup('places', last, now)).toBe(`Place: home · since ${hhmm}`)
-    expect(describeGroup('places', { place: sent(null, 1) }, now)).toMatch(/^Not at a saved place · since /)
+    expect(describeGroup('places', { place: sent(AWAY, 1) }, now)).toMatch(/^Not at a saved place · since /)
+    expect(describeGroup('places', { place: sent(null, 1) }, now)).toMatch(/^Place not known · since /)
   })
 
   test('network and sound mode in words', () => {
