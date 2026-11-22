@@ -28,6 +28,11 @@ export interface Fix {
   accuracy: number
 }
 
+/** Phase 7: her one-off position, or why there is none. */
+export type Position =
+  | { latitude: number; longitude: number; accuracy: number; /** Epoch ms of the fix. */ fixAt: number; error?: undefined }
+  | { error: 'no_permission' | 'location_off' | 'no_fix' }
+
 export interface ReportedValue {
   value: unknown
   /** Epoch ms: when it was last sent. */
@@ -61,6 +66,8 @@ declare class JophielSensesModule extends NativeModule<JophielSensesEvents> {
   lastReported(): Record<string, ReportedValue>
   /** One precise fix, or null (no permission, location off, timed out). */
   currentLocation(): Promise<Fix | null>
+  /** Phase 7: last known if under 2 min old, else a fresh fix within 10 s. Never stored. */
+  positionOnce(): Promise<Position>
   /** Which place you're at now, from one fix; true when it could tell. */
   checkPlaceNow(): Promise<boolean>
 }

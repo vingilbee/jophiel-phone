@@ -1,3 +1,5 @@
+import { parseAction, type PhoneAction } from '@/actions/protocol'
+
 /**
  * Pure decisions for her notifications (unit-tested): what a data push means, what to show,
  * and how several stack into one group.
@@ -11,10 +13,16 @@ export const HIDDEN_TEXT = 'Jophiel sent you a message'
 export type PushData =
   | { type: 'message'; conversationId: string | null; messageId: string; text: string | null }
   | { type: 'clear'; conversationId: string | null }
+  /** Phase 7: an action for this phone while it has no socket (args come as JSON text). */
+  | { type: 'phone_action'; action: PhoneAction }
 
 /** FCM data payloads are string maps; anything unexpected is ignored. */
-export function parsePushData(data: Record<string, unknown> | undefined): PushData | null {
+export function parsePushData(data: Record<string, unknown> | undefined, now: number = Date.now()): PushData | null {
   if (!data) return null
+  if (data.type === 'phone_action') {
+    const action = parseAction(data, now)
+    return action ? { type: 'phone_action', action } : null
+  }
   const str = (value: unknown) => (typeof value === 'string' && value ? value : null)
   if (data.type === 'clear') return { type: 'clear', conversationId: str(data.conversation_id) }
   if (data.type === 'message') {

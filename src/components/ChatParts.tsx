@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Pressable, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
+import { timeLabel } from '@/chat/format'
 import { bannerText, type ConnectionPhase } from '@/connection/state'
 import { radius, space, type, useColors } from '@/theme'
 import { AppText } from './AppText'
@@ -16,6 +17,27 @@ export function DateDivider({ label }: { label: string }) {
           {label}
         </AppText>
       </View>
+    </View>
+  )
+}
+
+/**
+ * Phase 7: something she did on this phone ("Opened Maps → Kemang Village", "Used your location
+ * once"). Not a bubble: a quiet centered line, unlike the date's pill, so it reads as a note in
+ * the thread rather than something anyone said.
+ */
+export function ActivityLine({ text, at }: { text: string; at: string }) {
+  const colors = useColors()
+  const time = timeLabel(at)
+  return (
+    <View style={styles.activity} accessible accessibilityLabel={`On your phone: ${text}, ${time}`}>
+      <Icon name="cellphone-arrow-down" size={14} color={colors.onSurfaceVariant} />
+      <AppText role="labelMedium" color="onSurfaceVariant" style={styles.activityText} numberOfLines={2}>
+        {text}
+      </AppText>
+      <AppText role="labelSmall" color="onSurfaceVariant">
+        {time}
+      </AppText>
     </View>
   )
 }
@@ -140,6 +162,15 @@ export function Composer({ replying, onSend, onStop, onTyping }: ComposerProps) 
 const styles = StyleSheet.create({
   divider: { alignItems: 'center', paddingTop: space.lg, paddingBottom: space.xs },
   dividerPill: { borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 4 },
+  activity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.sm,
+  },
+  activityText: { flexShrink: 1, textAlign: 'center' },
   thinking: { paddingHorizontal: space.sm, paddingTop: space.md, flexDirection: 'row' },
   banner: {
     flexDirection: 'row',

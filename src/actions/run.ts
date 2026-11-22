@@ -1,0 +1,117 @@
+import { destinationTitle, mapsUrl } from './maps'
+import type { Place } from '@/senses/places'
+import { isExpired, navigateArgs, type ActionResult, type PhoneAction, type PositionData } from './protocol'
+
+export type PositionAnswer =
+  | { latitude: number; longitude: number; accuracy: number; fixAt: number; error?: undefined }
+  | { error: 'no_permission' | 'location_off' | 'no_fix' | 'not_supported' }
+
+/** Everything an action needs from the phone; stand-ins in tests (src/actions/actions.test.ts). */
+export interface ActionDeps {
+  now: () => number
+  /** First time this action id is seen (a frame and a late push can both bring it). */
+  claim: (actionId: string) => Promise<boolean>
+  /** Settings → "Let Jophiel act on this phone", and the phase 6 Places group. */
+  switches: () => Promise<{ actionsEnabled: boolean; placesOn: boolean }>
+  openMaps: (url: string, title: string) => Promise<{ status: 'done' | 'notified' | 'failed'; reason: string | null }>
+  position: () => Promise<PositionAnswer>
+  /** Settings → Places (phase 6), for `resolve_saved_place`. */
+  places: () => Promise<Place[]>
+  /** Hand the result to the backend (socket, else the API); skipped for local actions. */
+  deliver: (action: PhoneAction, result: ActionResult) => Promise<void>
+}
+
+/**
+ * The checks every action passes, in order: too late → `expired`; the master switch → `refused`,
+ * `switched_off`; per action (`get_position`: the Places group → `refused`, `places_off`). Null: go
+ * ahead. `resolve_saved_place` needs the Places group too. Permission and "location is on" are read natively when the position is taken.
+ */
+export function precheck(
+  action: PhoneAction,
+  now: number,
+  switches: { actionsEnabled: boolean; placesOn: boolean },
+): ActionResult | null {
+  if (isExpired(action, now)) return { status: 'expired' }
+  if (!switches.actionsEnabled) return { status: 'refused', reason: 'switched_off' }
+  const usesPlaces = action.action === 'get_position' || action.action === 'resolve_saved_place'
+  if (usesPlaces && !switches.placesOn) return { status: 'refused', reason: 'places_off' }
+  return null
+}
+
+async function navigate(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
+  const args = navigateArgs(action.args)
+  if (!args) return { status: 'failed', reason: 'bad_args' }
+  const outcome = await deps.openMaps(mapsUrl(args), destinationTitle(args))
+  return outcome.reason ? { status: outcome.status, reason: outcome.reason } : { status: outcome.status }
+}
+
+async function getPosition(deps: ActionDeps): Promise<ActionResult> {
+  const answer = await deps.position()
+  if (answer.error === 'no_permission' || answer.error === 'location_off') return { status: 'refused', reason: answer.error }
+  if (answer.error) return { status: 'failed', reason: answer.error }
+  const data: PositionData = {
+    lat: answer.latitude,
+    lng: answer.longitude,
+    accuracy_m: Math.round(answer.accuracy),
+    fix_at: new Date(answer.fixAt).toISOString(),
+  }
+  return { status: 'done', data }
+}
+
+/** Trimmed, case-insensitive, inner spaces collapsed: "  Work " is "work". */
+function placeKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/** "From work to …": a saved place's centre by its name. None → `not_found`, several → `ambiguous`. */
+async function resolveSavedPlace(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
+  const name = action.args.name
+  if (typeof name !== 'string' || !name.trim()) return { status: 'failed', reason: 'bad_args' }
+  const key = placeKey(name)
+  const matches = (await deps.places()).filter((place) => placeKey(place.name) === key)
+  const [place, other] = matches
+  if (!place) return { status: 'failed', reason: 'not_found' }
+  if (other) return { status: 'failed', reason: 'ambiguous' }
+  return { status: 'done', data: { lat: place.latitude, lng: place.longitude } }
+}
+
+/**
+ * Run one action and answer it once. A repeat of an id already handled is ignored (no second
+ * Maps, no second answer). Never throws: anything unexpected answers `failed`.
+ */
+export async function runAction(action: PhoneAction, deps: ActionDeps): Promise<ActionResult | null> {
+  if (!action.local && !(await deps.claim(action.actionId))) return null
+  let result: ActionResult
+  try {
+    // The clock is read after the settings load (slow on a push-started app), not before.
+    const switches = await deps.switches()
+    result = precheck(action, deps.now(), switches) ?? (await perform(action, deps))
+  } catch {
+    result = { status: 'failed', reason: 'error' }
+  }
+  if (!action.local) await deps.deliver(action, result).catch(() => {})
+  return result
+}
+
+function perform(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
+  switch (action.action) {
+    case 'navigate_to':
+      return navigate(action, deps)
+    case 'get_position':
+      return getPosition(deps)
+    case 'resolve_saved_place':
+      return resolveSavedPlace(action, deps)
+    default:
+      return Promise.resolve({ status: 'failed', reason: 'unknown_action' })
+  }
+}
+
+/** Waits between POST tries while the action is still alive (answers only matter briefly). */
+export const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000]
+
+/** The delay before try `attempt` (0-based, after the first), or null: give up (out of tries, or past `expiresAt`). */
+export function retryDelay(attempt: number, now: number, expiresAt: number): number | null {
+  const delay = RETRY_DELAYS_MS[attempt]
+  if (delay === undefined || now + delay > expiresAt) return null
+  return delay
+}

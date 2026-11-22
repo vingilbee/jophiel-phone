@@ -9,7 +9,7 @@ import { useChat } from '@/chat/ChatProvider'
 import { toRows, type ChatRow } from '@/chat/format'
 import { AppText } from '@/components/AppText'
 import { Bubble } from '@/components/Bubble'
-import { Composer, ConnectionBanner, DateDivider, ThinkingRow } from '@/components/ChatParts'
+import { ActivityLine, Composer, ConnectionBanner, DateDivider, ThinkingRow } from '@/components/ChatParts'
 import { IconButton } from '@/components/Controls'
 import { JophielMark } from '@/components/Marks'
 import { Snackbar } from '@/components/Snackbar'
@@ -123,7 +123,11 @@ export default function ChatScreen() {
       return (
         <View>
           {row.dayDivider ? <DateDivider label={row.dayDivider} /> : null}
-          <Bubble row={row} token={token} highlighted={highlight === row.item.id} onCopied={onCopied} onFailedPress={onFailedPress} />
+          {row.item.activity ? (
+            <ActivityLine text={row.item.text} at={row.item.at} />
+          ) : (
+            <Bubble row={row} token={token} highlighted={highlight === row.item.id} onCopied={onCopied} onFailedPress={onFailedPress} />
+          )}
         </View>
       )
     },

@@ -44,6 +44,11 @@ export interface ChatRow {
   dayDivider: string | null
 }
 
+/** Who a row belongs to for grouping: an activity line is neither side's and breaks a run. */
+function sender(item: ChatItem | undefined): string | undefined {
+  return item && (item.activity ? 'activity' : item.role)
+}
+
 /** Group items into rows: runs per sender (broken by a new day) and date dividers. Oldest first. */
 export function toRows(items: readonly ChatItem[], now: Date = new Date()): ChatRow[] {
   return items.map((item, index) => {
@@ -53,8 +58,8 @@ export function toRows(items: readonly ChatItem[], now: Date = new Date()): Chat
     const nextNewDay = !next || !sameDay(item.at, next.at)
     return {
       item,
-      firstOfRun: newDay || prev?.role !== item.role,
-      lastOfRun: nextNewDay || next?.role !== item.role,
+      firstOfRun: newDay || sender(prev) !== sender(item),
+      lastOfRun: nextNewDay || sender(next) !== sender(item),
       dayDivider: newDay ? dayLabel(item.at, now) : null,
     }
   })

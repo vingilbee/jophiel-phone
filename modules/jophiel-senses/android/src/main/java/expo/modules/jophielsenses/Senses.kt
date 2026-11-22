@@ -1,8 +1,11 @@
 package expo.modules.jophielsenses
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.content.Context
 import android.location.Location
+import android.location.LocationManager
+import android.os.Build
 import android.util.Log
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
@@ -12,6 +15,9 @@ import com.google.android.gms.tasks.CancellationTokenSource
 /** How long a one-off location may take (GPS indoors can be slow), and how old a cached fix may be. */
 private const val LOCATION_TIMEOUT_MS = 20_000L
 private const val LOCATION_MAX_AGE_MS = 30_000L
+/** Phase 7, her one-off position: a fix this fresh is reused, else a new one within this long. */
+private const val POSITION_MAX_AGE_MS = 2 * 60_000L
+private const val POSITION_TIMEOUT_MS = 10_000L
 
 /**
  * What the wake-ups and the JS calls do with the stored state: the same code runs with JS live
@@ -137,5 +143,52 @@ internal object Senses {
         done(true)
       }
     }
+  }
+
+  /**
+   * Phase 7: one position for one of her lookups ("how long to the office?"). Never stored or
+   * logged; JS hands it straight to the backend in a `get_position` result. `done` gets the fix or
+   * why not: `no_permission` (none, or the app isn't in front without "Allow all the time"),
+   * `location_off` (switched off on the phone), `no_fix` (nothing within the time).
+   */
+  @SuppressLint("MissingPermission") // checked first
+  fun positionOnce(context: Context, done: (Location?, String?) -> Unit) {
+    if (!Permissions.fineLocation(context) || (!appInFront() && !Permissions.backgroundLocation(context))) {
+      done(null, "no_permission")
+      return
+    }
+    if (!locationOn(context)) {
+      done(null, "location_off")
+      return
+    }
+    try {
+      val request = CurrentLocationRequest.Builder()
+        .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+        .setDurationMillis(POSITION_TIMEOUT_MS)
+        .setMaxUpdateAgeMillis(POSITION_MAX_AGE_MS)
+        .build()
+      LocationServices.getFusedLocationProviderClient(context)
+        .getCurrentLocation(request, CancellationTokenSource().token)
+        .addOnSuccessListener { done(it, if (it == null) "no_fix" else null) }
+        .addOnFailureListener { done(null, "no_fix") }
+    } catch (e: Exception) {
+      done(null, "no_fix")
+    }
+  }
+
+  private fun locationOn(context: Context): Boolean {
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      manager.isLocationEnabled
+    } else {
+      manager.isProviderEnabled(LocationManager.GPS_PROVIDER) || manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }
+  }
+
+  /** An activity of ours is in front: "while using the app" location applies. */
+  private fun appInFront(): Boolean {
+    val info = ActivityManager.RunningAppProcessInfo()
+    ActivityManager.getMyMemoryState(info)
+    return info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
   }
 }

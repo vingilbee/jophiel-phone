@@ -67,6 +67,14 @@ describe('format', () => {
     expect(rows.map((r) => r.firstOfRun)).toEqual([true, true, false, true])
     expect(rows.map((r) => r.lastOfRun)).toEqual([true, false, true, true])
   })
+  test('an activity line breaks her run (phase 7)', () => {
+    const item = (activity: boolean, minute: number): ChatItem => ({
+      key: Math.random().toString(), id: null, turnId: null, role: 'assistant', text: 'x', at: new Date(2026, 10, 20, 9, minute).toISOString(),
+      arrivedAt: null, tick: null, status: 'completed', streaming: false, unprompted: false, imageIds: [], assetIds: [], heardChars: null, activity,
+    })
+    const rows = toRows([item(false, 0), item(true, 1), item(false, 2)], now)
+    expect(rows.map((r) => [r.firstOfRun, r.lastOfRun])).toEqual([[true, true], [true, true], [true, true]])
+  })
 })
 
 describe('markdown', () => {

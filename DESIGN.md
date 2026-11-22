@@ -48,6 +48,9 @@ sizes are sp and scale with the system font size. Monospace only for code in her
   in the corner, ticks after it on yours; "waited 9 h on the phone" when a queued message arrived
   late; "stopped" / "didn't finish" on her partial replies. A message the server won't take
   shows a red ⓘ and "Not sent · tap for options" (Try again / Delete). Long press copies.
+- **Activity line** (phase 7): something she did on the phone ("Opened Maps → Kemang Village",
+  "Used your location once"): centered, no pill (the date has one), a 14dp phone icon, labelMedium
+  in onSurfaceVariant and the time. Breaks bubble runs.
 - **Composer:** a pill field and a 48dp round button: send (filled terracotta when there's text),
   stop (tonal) while she replies and the field is empty.
 - **Connection banner:** under the app bar; "Reconnecting…" (tonal) after 2 s, then after 15 s the

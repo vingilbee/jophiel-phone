@@ -3,6 +3,7 @@ import * as Application from 'expo-application'
 import { useRouter } from 'expo-router'
 import { Alert, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { actionsAvailable, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
 import { fetchCapabilities } from '@/api/auth'
 import { useSession } from '@/auth/session'
 import { useChat } from '@/chat/ChatProvider'
@@ -12,7 +13,14 @@ import { IconButton, ListRow, SectionHeader, SwitchRow } from '@/components/Cont
 import type { ConnectionPhase } from '@/connection/state'
 import { pushEnabled } from '@/push/config'
 import { SENSE_GROUPS } from '@/senses/groups'
-import { hasActivityPermission, hasBackgroundLocationPermission, hasNearbyPermission, openAppSettings, openNotificationSettings } from '@/setup/permissions'
+import {
+  hasActivityPermission,
+  hasBackgroundLocationPermission,
+  hasFullScreenPermission,
+  hasNearbyPermission,
+  openAppSettings,
+  openNotificationSettings,
+} from '@/setup/permissions'
 import { usePermissions, type Permissions } from '@/setup/usePermissions'
 import { updateSettings, useSettings } from '@/settings/store'
 import { space, useColors } from '@/theme'
@@ -107,6 +115,18 @@ export default function Settings() {
           onPress={() => router.push('/senses')}
         />
 
+        <SectionHeader title="Her actions" />
+        <SwitchRow
+          title="Let Jophiel act on this phone"
+          supporting={
+            settings.actionsEnabled
+              ? 'She can start Google Maps navigation for you, and use your position once for a route or a nearby search. Each time leaves a line in the chat.'
+              : 'Off: she can’t open Maps or use your position. She’ll say so if she tries.'
+          }
+          value={settings.actionsEnabled}
+          onValueChange={(actionsEnabled) => updateSettings({ actionsEnabled })}
+        />
+
         <SectionHeader title="Account" />
         <ListRow icon="account-outline" title={user?.name ?? 'Signed in'} supporting={user?.email} />
         <ListRow icon="logout" title="Log out" danger onPress={confirmSignOut} />
@@ -172,6 +192,34 @@ export default function Settings() {
             onPress={() => void openAppSettings()}
           />
         ) : null}
+        {actionsAvailable ? (
+          <ListRow
+            icon="layers-outline"
+            title="Display over other apps"
+            supporting={
+              permissions.overlay === 'granted'
+                ? 'Allowed: she can open Maps while you’re in another app.'
+                : permissions.overlay === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to allow it (otherwise she sends a “Tap to start navigation” notification).'
+            }
+            onPress={() => openOverlaySettings()}
+          />
+        ) : null}
+        {actionsAvailable && hasFullScreenPermission ? (
+          <ListRow
+            icon="cellphone-screenshot"
+            title="Full-screen notifications"
+            supporting={
+              permissions.fullScreen === 'granted'
+                ? 'Allowed: she can wake the screen to start navigation from your pocket.'
+                : permissions.fullScreen === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to allow it (navigation from your pocket).'
+            }
+            onPress={() => openFullScreenIntentSettings()}
+          />
+        ) : null}
         {permissions.battery ? (
           <ListRow
             icon="battery-heart-variant"
@@ -186,8 +234,8 @@ export default function Settings() {
             <SectionHeader title="Developer" />
             <ListRow
               icon="tune-vertical"
-              title="Voice: echo test and tuning"
-              supporting="Mic meter, echo check, VAD values, echo fallbacks"
+              title="Voice tuning and phone actions"
+              supporting="Mic meter, echo check, VAD values, echo fallbacks, phone action tests"
               onPress={() => router.push('/developer')}
             />
           </>

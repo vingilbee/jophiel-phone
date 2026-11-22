@@ -5,6 +5,7 @@ import { connectionPhase, type ConnectionPhase } from '@/connection/state'
 import { updateSettings } from '@/settings/store'
 import { clearPresentedNotifications } from '@/push/display'
 import { retryPushRegistration } from '@/push/registration'
+import { attachActionsSocket, detachActionsSocket, dispatchAction, parseAction } from '@/actions'
 import { phoneSenses } from '@/senses/native'
 import { ChatConnection } from './connection'
 import type { VoiceState } from './frames'
@@ -94,6 +95,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           onFrame: (frame) => dispatch({ type: 'frame', frame, now: new Date().toISOString() }),
           onSendFailed: (turnId) => dispatch({ type: 'sendFailed', turnId }),
           onSettleTurn: (turnId) => dispatch({ type: 'settleTurn', turnId }),
+          onPhoneAction: (frame) => {
+            const action = parseAction(frame, Date.now())
+            if (action) void dispatchAction(action)
+          },
           onReadyChange: setVoiceReady,
           onOpenChange: (isOpen) => {
             setOpen(isOpen)
@@ -146,6 +151,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       phoneSenses.setLive(false)
     }
   }, [connection, updateSensesLive])
+
+  // Phase 7: her actions' results go back over this socket while it's open.
+  useEffect(() => {
+    const link = { send: connection.send.bind(connection) }
+    attachActionsSocket(link)
+    return () => detachActionsSocket(link)
+  }, [connection])
 
   // Restore the waiting queue, then connect.
   useEffect(() => {

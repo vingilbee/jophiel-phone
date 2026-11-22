@@ -1,3 +1,4 @@
+import { dispatchAction } from '@/actions'
 import { pushEnabled } from './config'
 import { handlePush, notifee, savePendingTap, tappedMessageId } from './display'
 import { parsePushData } from './plan'
@@ -7,7 +8,10 @@ if (pushEnabled) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { getMessaging, setBackgroundMessageHandler } = require('@react-native-firebase/messaging') as typeof import('@react-native-firebase/messaging')
   setBackgroundMessageHandler(getMessaging(), async (message) => {
-    await handlePush(parsePushData(message.data))
+    const push = parsePushData(message.data)
+    // Phase 7: an action from her, with the app closed or swiped away; resolves once it's answered.
+    if (push?.type === 'phone_action') await dispatchAction(push.action)
+    else await handlePush(push)
   })
 }
 

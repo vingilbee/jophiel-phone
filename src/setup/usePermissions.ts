@@ -6,10 +6,12 @@ import {
   approximateLocationOnly,
   backgroundLocationPermission,
   batteryPermission,
+  fullScreenPermission,
   locationPermission,
   microphonePermission,
   nearbyPermission,
   notificationPermission,
+  overlayPermission,
   showsBatteryStep,
   type PermissionState,
 } from './permissions'
@@ -28,6 +30,10 @@ export interface Permissions {
   activity: PermissionState
   /** Phase 6: nearby devices (Bluetooth headphones with the app closed). */
   nearby: PermissionState
+  /** Phase 7: "Display over other apps" (open Maps while another app is on screen). */
+  overlay: PermissionState
+  /** Phase 7: full-screen notifications (wake the screen to start navigation; Android 14+). */
+  fullScreen: PermissionState
 }
 
 type Blockable = 'notifications' | 'microphone' | 'location' | 'backgroundLocation' | 'activity' | 'nearby'
@@ -41,6 +47,8 @@ const INITIAL: Permissions = {
   backgroundLocation: 'unknown',
   activity: 'unknown',
   nearby: 'unknown',
+  overlay: 'unknown',
+  fullScreen: 'unknown',
 }
 
 /**
@@ -61,6 +69,8 @@ export function usePermissions(): [Permissions, () => void, (name: Blockable, st
         backgroundLocation: await backgroundLocationPermission(),
         activity: await activityPermission(),
         nearby: await nearbyPermission(),
+        overlay: overlayPermission(),
+        fullScreen: fullScreenPermission(),
       }
       // Android only says "blocked" when asked; a later check reads "denied". Keep what we learned.
       setState((prev) => {

@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { actionsAvailable, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
 import { checkHealth } from '@/api/auth'
 import { AppText } from '@/components/AppText'
 import { Button, Icon, type IconName } from '@/components/Controls'
@@ -10,6 +11,7 @@ import { registerNow } from '@/push/registration'
 import {
   hasActivityPermission,
   hasBackgroundLocationPermission,
+  hasFullScreenPermission,
   hasNearbyPermission,
   openAppSettings,
   openBatterySettings,
@@ -30,6 +32,8 @@ const STEP_IDS = [
   'location-always',
   'activity',
   'nearby',
+  'overlay',
+  'full-screen',
   'battery',
 ] as const
 
@@ -54,6 +58,10 @@ function steps(p: Permissions, current: StepId): StepId[] {
         return hasActivityPermission
       case 'nearby':
         return hasNearbyPermission
+      case 'overlay':
+        return actionsAvailable
+      case 'full-screen':
+        return actionsAvailable && hasFullScreenPermission
       case 'battery':
         return showsBatteryStep()
       default:
@@ -121,6 +129,10 @@ export default function SetupStep() {
         return permissions.activity === 'granted'
       case 'nearby':
         return permissions.nearby === 'granted'
+      case 'overlay':
+        return permissions.overlay === 'granted'
+      case 'full-screen':
+        return permissions.fullScreen === 'granted'
       case 'battery':
         return permissions.battery === 'granted'
     }
@@ -274,6 +286,20 @@ export default function SetupStep() {
       if (permissions.nearby === 'blocked') {
         problem = "Android won't ask again. In the app settings, tap Permissions → Nearby devices and allow it."
       }
+      break
+    case 'overlay':
+      icon = 'layers-outline'
+      title = 'Opening Maps for you'
+      body =
+        'So she can open Google Maps navigating (and later other apps) while you’re in another app. Android calls this “Display over other apps”; the floating chibi will use it too. Tap below, turn it on for Jophiel, then come back. Without it, she sends a “Tap to start navigation” notification instead.'
+      action = done ? null : { label: 'Open the setting', onPress: () => openOverlaySettings() }
+      break
+    case 'full-screen':
+      icon = 'cellphone-screenshot'
+      title = 'Navigation from your pocket'
+      body =
+        'So she can wake the screen and start navigation when the phone is in your pocket and no PIN is needed (for example with Smart Lock and your earphones). Android calls this “Full-screen notifications”. With a PIN, she sends a notification and asks you to unlock.'
+      action = done ? null : { label: 'Open the setting', onPress: () => openFullScreenIntentSettings() }
       break
     case 'battery':
       icon = 'battery-heart-variant'
