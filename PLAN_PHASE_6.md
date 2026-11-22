@@ -269,6 +269,12 @@ owner's (see "Not yet verified").
     transitions until the next sign-in; other 4xx are dropped.
   - Headphones = wired, USB, A2DP, SCO, BLE headset, hearing aid. A Bluetooth car stereo or speaker
     also counts (Android can't tell them apart without more permissions).
+- **Review fixes (PR #5):** a switch-off clear is stamped when the switch changes (it used to
+  carry the last sighting's time, older than a reconnect's re-confirmation, so the server kept the
+  value), and nothing later on a socket is stamped older than its whole-state frame; a queued
+  background report drops fields whose group was switched off while it waited (nulls still go);
+  place and motion are forgotten in JS too on switch-off, and a snapshot without them means
+  "unknown", so switching back on waits for a fresh reading instead of resending the old one.
 - **JS:** `src/senses/` (groups, `report.ts` value checks + diffing, controller, native bridge,
   `useSensesBridge` in the signed-in layout); `phone` in `sense` frames via `ConnectionSource.phone`
   (`connection.ts` sends the whole state as each socket's first frame, then only changes). Screens:

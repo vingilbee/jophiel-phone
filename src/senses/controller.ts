@@ -1,6 +1,13 @@
 import { PHONE_FIELDS, type PhoneField, type PhoneStateReport } from '@/chat/frames'
-import { GROUP_FIELDS, sameSwitches, switchedOff, type SenseSwitches } from './groups'
+import { GROUP_FIELDS, SENSE_GROUPS, sameSwitches, switchedOff, type SenseSwitches } from './groups'
 import { changes, checkFields, effective, fieldsOf, isEmpty, type Known } from './report'
+
+/**
+ * Fields that come from wake-ups (geofences, activity transitions), not from live readers. The
+ * native module is their source of truth: it forgets them when their group is switched off, and its
+ * snapshot leaves them out until a fresh reading arrives.
+ */
+const WAKE_UP_FIELDS: readonly PhoneField[] = ['motion', 'place']
 
 /** What the controller needs from the native module (a stand-in in tests; null in an old build). */
 export interface SensesNative {
@@ -30,6 +37,8 @@ export class PhoneSenses {
   private seenAt: Partial<Record<PhoneField, number>> = {}
   /** What this socket was sent. */
   private sent: Known = {}
+  /** `observed_at` of this socket's whole-state frame: nothing later on it may claim to be older. */
+  private syncedAt = 0
   private live = false
   private link: SensesLink | null = null
   private switches: SenseSwitches
@@ -67,7 +76,7 @@ export class PhoneSenses {
     this.live = on
     if (on) {
       this.native.startLive()
-      this.ingest(this.native.snapshot(), this.now())
+      this.ingestSnapshot()
     } else {
       this.native.stopLive()
     }
@@ -80,6 +89,18 @@ export class PhoneSenses {
   setSwitches(next: SenseSwitches) {
     if (sameSwitches(this.switches, next)) return
     const off = switchedOff(this.switches, next)
+    const now = this.now()
+    for (const group of SENSE_GROUPS) {
+      if (this.switches[group] === next[group]) continue
+      for (const field of GROUP_FIELDS[group]) {
+        // The change happened now: a null sent for it must not carry an older sighting's time (the
+        // server keeps whichever observation is newer, so an old-stamped clear would be ignored).
+        this.seenAt[field] = now
+        // A place or motion from before the switch-off is stale by the time it's back on: wait for
+        // a fresh reading (the native side forgot it too).
+        if (!next[group] && WAKE_UP_FIELDS.includes(field)) delete this.known[field]
+      }
+    }
     this.switches = { ...next }
     if (this.link?.isOpen()) {
       this.link.sendSense()
@@ -98,7 +119,7 @@ export class PhoneSenses {
   report(full: boolean): PhoneStateReport | null {
     if (!this.native) return null
     if (full) {
-      this.ingest(this.native.snapshot(), this.now())
+      this.ingestSnapshot()
       const fields = effective(this.known, this.switches)
       return isEmpty(fields) ? null : { ...fields, observed_at: new Date(this.now()).toISOString() }
     }
@@ -108,6 +129,7 @@ export class PhoneSenses {
     const now = this.now()
     let at = 0
     for (const field of Object.keys(fields) as PhoneField[]) at = Math.max(at, this.seenAt[field] ?? now)
+    at = Math.max(at, this.syncedAt)
     return { ...fields, observed_at: new Date(Math.min(at, now)).toISOString() }
   }
 
@@ -115,8 +137,10 @@ export class PhoneSenses {
   markSent(report: PhoneStateReport, full: boolean) {
     const fields = fieldsOf(report)
     this.sent = full ? { ...fields } : { ...this.sent, ...fields }
-    const at = report.observed_at ? Date.parse(report.observed_at) : this.now()
-    this.native?.noteSent(fields, Number.isFinite(at) ? at : this.now())
+    const parsed = report.observed_at ? Date.parse(report.observed_at) : Number.NaN
+    const at = Number.isFinite(parsed) ? parsed : this.now()
+    if (full) this.syncedAt = at
+    this.native?.noteSent(fields, at)
   }
 
   /** Sign-out: off, and nothing about this account kept. */
@@ -125,6 +149,19 @@ export class PhoneSenses {
     this.known = {}
     this.seenAt = {}
     this.sent = {}
+    this.syncedAt = 0
+  }
+
+  /** Read everything now. Place and motion missing from the snapshot are unknown, not "as before". */
+  private ingestSnapshot() {
+    const raw = this.native!.snapshot()
+    for (const field of WAKE_UP_FIELDS) {
+      if (!(field in raw)) {
+        delete this.known[field]
+        delete this.seenAt[field]
+      }
+    }
+    this.ingest(raw, this.now())
   }
 
   /** Take in native values. True when one of them changed. */

@@ -101,11 +101,20 @@ class ReportWorker(context: Context, params: WorkerParameters) : Worker(context,
     val at = inputData.getLong(AT, System.currentTimeMillis())
     if (System.currentTimeMillis() - at > MAX_AGE_MS) return Result.success()
     val credentials = Store.credentials(applicationContext) ?: return Result.success()
-    val fields = try {
+    val queued = try {
       JSONObject(raw)
     } catch (e: Exception) {
       return Result.success()
     }
+    // The switches may have changed while this waited for a network: a group switched off since
+    // sends nothing (a place name must not leave the phone then). Its nulls (the clear) still go.
+    val enabled = Store.enabledFields(applicationContext)
+    val fields = JSONObject()
+    queued.keys().forEach { name ->
+      val value = queued.opt(name)
+      if (name in enabled || value == null || value == JSONObject.NULL) fields.put(name, value ?: JSONObject.NULL)
+    }
+    if (fields.length() == 0) return Result.success()
     val body = JSONObject(fields.toString()).put("observed_at", Instant.ofEpochMilli(at).toString())
 
     val code = try {

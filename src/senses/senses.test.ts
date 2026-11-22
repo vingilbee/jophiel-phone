@@ -232,6 +232,68 @@ describe('phone senses controller', () => {
     expect(socket.frames[1]).toMatchObject({ battery: 60 })
   })
 
+  // Review of PR #5: privacy switches.
+  test('a switch-off clear is stamped now, never older than the reconnect that re-confirmed the value', () => {
+    // Arrived home at 10:00; reconnected at 10:30 (whole state, place re-confirmed); Places off at 10:31.
+    const { senses, fake, socket, advance } = setup({})
+    senses.setLive(true)
+    socket.link.sendSense()
+    fake.emit({ place: 'home' }, T0)
+    advance(30 * 60_000)
+    fake.snapshot.place = 'home'
+    socket.state.synced = false
+    socket.link.sendSense()
+    expect(socket.frames[2]).toMatchObject({ place: 'home', observed_at: '2026-11-21T10:30:00.000Z' })
+    advance(60_000)
+    senses.setSwitches(off('places'))
+    expect(socket.frames[3]).toEqual({ place: null, observed_at: '2026-11-21T10:31:00.000Z' })
+  })
+
+  test('a change sent on a socket is never stamped older than that socket\'s whole-state frame', () => {
+    const { senses, fake, socket, advance } = setup({ battery: 64 })
+    senses.setLive(true)
+    advance(60_000)
+    socket.link.sendSense()
+    fake.emit({ battery: 63 }, T0) // seen before the snapshot went out
+    expect(socket.frames[1]).toEqual({ battery: 63, observed_at: '2026-11-21T10:01:00.000Z' })
+  })
+
+  test('Places back on: the place from before the switch-off is not sent again', () => {
+    const { senses, fake, socket } = setup({})
+    senses.setLive(true)
+    socket.link.sendSense()
+    fake.emit({ place: 'home' }, T0)
+    senses.setSwitches(off('places'))
+    expect(socket.frames.at(-1)).toMatchObject({ place: null })
+    // Native forgot it too (configure ran first), so the snapshot has no place.
+    senses.setSwitches(ALL_ON)
+    // The frame for the switch-on carries no phone object: there's nothing fresh to say.
+    expect(socket.frames.at(-1)).toBeNull()
+    expect(senses.report(false)).toBeNull()
+    // The fresh fix arrives: that's what goes out.
+    fake.emit({ place: 'the gym' }, T0 + 1)
+    expect(socket.frames.at(-1)).toMatchObject({ place: 'the gym' })
+  })
+
+  test('…nor by the next reconnect, when the native side no longer knows it', () => {
+    const { senses, fake, socket } = setup({ place: 'home' })
+    senses.setLive(true)
+    socket.link.sendSense()
+    delete fake.snapshot.place
+    socket.state.synced = false
+    socket.link.sendSense()
+    expect(socket.frames.at(-1)).not.toHaveProperty('place')
+  })
+
+  test('live fields survive a switch off and on (their readers keep running)', () => {
+    const { senses, socket } = setup({ battery: 64 })
+    senses.setLive(true)
+    socket.link.sendSense()
+    senses.setSwitches(off('battery'))
+    senses.setSwitches(ALL_ON)
+    expect(socket.frames.at(-1)).toMatchObject({ battery: 64 })
+  })
+
   test('no native module (old build): no phone object at all', () => {
     const senses = new PhoneSenses(null, ALL_ON)
     senses.setLive(true)
