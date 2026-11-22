@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { parsePushData } from '../push/plan'
 import { destinationTitle, mapsUrl } from './maps'
 import { DEFAULT_LIFETIME_MS, isExpired, navigateArgs, parseAction, resultFrame, type ActionResult, type NavigateArgs, type PhoneAction } from './protocol'
+import { SEEN_KEEP, seenIds, type SeenStorage } from './seen'
 import { precheck, retryDelay, RETRY_DELAYS_MS, runAction, type ActionDeps, type PositionAnswer } from './run'
 
 const NOW = Date.parse('2026-11-21T10:00:00.000Z')
@@ -252,12 +253,70 @@ describe('runAction', () => {
     expect(throwing.delivered).toEqual([['a1', { status: 'failed', reason: 'error' }]])
   })
 
+  test('expiry is checked after the settings load, not before', async () => {
+    let clock = NOW
+    const { deps, delivered, opened } = fakeDeps({
+      now: () => clock,
+      switches: async () => {
+        clock = NOW + 120_000 // a slow cold start, past the action's 60 s
+        return { actionsEnabled: true, placesOn: true }
+      },
+    })
+    await runAction(action(), deps)
+    expect(opened).toEqual([])
+    expect(delivered).toEqual([['a1', { status: 'expired' }]])
+  })
+
   test('a local (developer) action is never claimed or answered', async () => {
     const { deps, delivered, opened } = fakeDeps()
     expect(await runAction(action({ local: true }), deps)).toEqual({ status: 'done' })
     expect(await runAction(action({ local: true }), deps)).toEqual({ status: 'done' })
     expect(opened).toHaveLength(2)
     expect(delivered).toEqual([])
+  })
+})
+
+function memoryStorage(initial: string | null = null) {
+  let value = initial
+  const writes: string[] = []
+  const storage: SeenStorage = {
+    getItem: async () => {
+      await Promise.resolve()
+      return value
+    },
+    setItem: async (_key, next) => {
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      value = next
+      writes.push(next)
+    },
+  }
+  return { storage, value: () => value, writes }
+}
+
+describe('seenIds', () => {
+  test('two different ids claimed together are both kept', async () => {
+    const memory = memoryStorage()
+    const claim = seenIds(memory.storage)
+    expect(await Promise.all([claim('a'), claim('b')])).toEqual([true, true])
+    expect(JSON.parse(memory.value() ?? '[]')).toEqual(['a', 'b'])
+  })
+
+  test('the same id twice, now or from an earlier run, passes once', async () => {
+    const claim = seenIds(memoryStorage().storage)
+    expect(await Promise.all([claim('a'), claim('a')])).toEqual([true, false])
+    const later = seenIds(memoryStorage(JSON.stringify(['a'])).storage)
+    expect(await later('a')).toBe(false)
+    expect(await later('b')).toBe(true)
+  })
+
+  test(`keeps the last ${SEEN_KEEP}; unreadable storage starts empty`, async () => {
+    const memory = memoryStorage(JSON.stringify(Array.from({ length: SEEN_KEEP }, (_, i) => `old${i}`)))
+    await seenIds(memory.storage)('new')
+    const kept = JSON.parse(memory.value() ?? '[]') as string[]
+    expect(kept).toHaveLength(SEEN_KEEP)
+    expect(kept.at(-1)).toBe('new')
+    expect(kept).not.toContain('old0')
+    expect(await seenIds(memoryStorage('not json').storage)('a')).toBe(true)
   })
 })
 

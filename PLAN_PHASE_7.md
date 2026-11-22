@@ -291,7 +291,7 @@ without it. 7.6 (S21 pass) done 2026-11-22, see the end of this file.
 | `notified` | `keyguard` | woke the screen but Android kept the lock screen (e.g. Smart Lock not trusted) |
 | `notified` | `no_wake` | the full-screen notification didn't start the wake screen within 6 s |
 | `notified` | `open_failed` | Android refused to open Maps |
-| `failed` | `maps_missing` / `notifications_off` / `bad_args` / `unknown_action` / `not_supported` (old build) / `error` | as named |
+| `failed` | `maps_missing` / `notifications_off` (the app's notifications, or its "Actions" channel, off) / `bad_args` / `unknown_action` / `not_supported` (old build) / `error` | as named |
 | `refused` | `switched_off` | "Let Jophiel act on this phone" is off (any action) |
 | `refused` | `places_off` | `get_position` / `resolve_saved_place` with the phase 6 Places group off |
 | `failed` | `not_found` / `ambiguous` | `resolve_saved_place`: no saved place by that name / several (trimmed, case-insensitive) |

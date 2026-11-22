@@ -7,6 +7,7 @@ import { loadSettings } from '@/settings/store'
 import { setTimeout as setNativeTimeout } from '@/voice/timers'
 import { resultFrame, type ActionResult, type PhoneAction, type PhoneActionResultFrame } from './protocol'
 import { retryDelay, runAction, type ActionDeps } from './run'
+import { seenIds } from './seen'
 
 export { parseAction, type PhoneAction } from './protocol'
 
@@ -31,36 +32,7 @@ export function detachActionsSocket(link: ActionsSocket) {
 
 // ---- Each action once ----
 
-const SEEN_KEY = 'jophiel.actions.seen'
-const SEEN_KEEP = 50
-const seen = new Set<string>()
-let stored: Promise<string[]> | null = null
-
-function storedIds(): Promise<string[]> {
-  stored ??= AsyncStorage.getItem(SEEN_KEY)
-    .then((raw) => {
-      const ids: unknown = raw ? JSON.parse(raw) : []
-      return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
-    })
-    .catch(() => [])
-  return stored
-}
-
-/**
- * True the first time an id is seen, here or in an earlier run of the app (a push that arrived
- * after the app was swiped away and opened again). Marked before any await, so a frame and a push
- * racing in the same runtime can't both pass.
- */
-async function claim(actionId: string): Promise<boolean> {
-  if (seen.has(actionId)) return false
-  seen.add(actionId)
-  const ids = await storedIds()
-  if (ids.includes(actionId)) return false
-  const next = [...ids, actionId].slice(-SEEN_KEEP)
-  stored = Promise.resolve(next)
-  await AsyncStorage.setItem(SEEN_KEY, JSON.stringify(next)).catch(() => {})
-  return true
-}
+const claim = seenIds(AsyncStorage)
 
 // ---- Answering ----
 

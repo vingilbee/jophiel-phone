@@ -167,11 +167,21 @@ internal object Maps {
     return if (star != 0) star else context.applicationInfo.icon
   }
 
-  /** The "Tap to start navigation" notification; its tap opens Maps navigating. False when notifications are off. */
+  /** The owner switched off the "Actions" channel: Android would drop the notification silently. */
+  private fun channelBlocked(context: Context): Boolean {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    return manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
+  }
+
+  /**
+   * The "Tap to start navigation" notification; its tap opens Maps navigating. False when it
+   * wouldn't show: the app's notifications or its "Actions" channel are off.
+   */
   private fun post(context: Context, url: String, title: String, fullScreen: PendingIntent?): Boolean {
     val notifications = NotificationManagerCompat.from(context)
     if (!notifications.areNotificationsEnabled()) return false
     ensureChannel(context)
+    if (channelBlocked(context)) return false
     val tap = PendingIntent.getActivity(
       context,
       NOTIFICATION_ID,

@@ -83,7 +83,9 @@ export async function runAction(action: PhoneAction, deps: ActionDeps): Promise<
   if (!action.local && !(await deps.claim(action.actionId))) return null
   let result: ActionResult
   try {
-    result = precheck(action, deps.now(), await deps.switches()) ?? (await perform(action, deps))
+    // The clock is read after the settings load (slow on a push-started app), not before.
+    const switches = await deps.switches()
+    result = precheck(action, deps.now(), switches) ?? (await perform(action, deps))
   } catch {
     result = { status: 'failed', reason: 'error' }
   }
