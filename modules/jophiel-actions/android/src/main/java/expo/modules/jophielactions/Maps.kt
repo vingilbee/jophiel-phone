@@ -32,13 +32,13 @@ internal data class Outcome(val status: String, val reason: String? = null)
  */
 internal object Maps {
   const val PACKAGE = "com.google.android.apps.maps"
-  private const val CHANNEL = "actions"
+  const val CHANNEL = "actions"
   /** One trip at a time: a new navigate_to replaces the previous notification. */
   private const val NOTIFICATION_ID = 7001
   private const val NOTIFICATION_TIMEOUT_MS = 10 * 60_000L
   /** How long the full-screen path may take to wake the screen and open Maps before it counts as notified. */
   private const val WAKE_TIMEOUT_MS = 6_000L
-  private const val ACCENT = 0xFFB8572F.toInt()
+  const val ACCENT = 0xFFB8572F.toInt()
 
   private val main = Handler(Looper.getMainLooper())
   /** Wake attempts in flight: token → what to do with WakeActivity's answer. */
@@ -153,7 +153,7 @@ internal object Maps {
    */
   fun claimWake(token: String?): ((Outcome) -> Unit)? = token?.let { waiting.remove(it) }
 
-  private fun ensureChannel(context: Context) {
+  fun ensureChannel(context: Context) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (manager.getNotificationChannel(CHANNEL) != null) return
     val channel = NotificationChannel(CHANNEL, "Actions", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -162,13 +162,13 @@ internal object Maps {
     manager.createNotificationChannel(channel)
   }
 
-  private fun smallIcon(context: Context): Int {
+  fun smallIcon(context: Context): Int {
     val star = context.resources.getIdentifier("ic_stat_jophiel", "drawable", context.packageName)
     return if (star != 0) star else context.applicationInfo.icon
   }
 
   /** The owner switched off the "Actions" channel: Android would drop the notification silently. */
-  private fun channelBlocked(context: Context): Boolean {
+  fun channelBlocked(context: Context): Boolean {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     return manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
   }

@@ -53,6 +53,18 @@ internal object Senses {
     Reporter.deliver(context, mapOf("motion" to motion), at)
   }
 
+  /**
+   * Phase 8: `media` or `navigation` from the notification listener (jophiel-notifications), kept
+   * as last seen (like motion and place) and handed on like any other change.
+   */
+  fun onField(context: Context, field: String, value: Map<String, Any?>?, at: Long) {
+    if (field !in FIELD_FROM_LISTENER || !Store.groupOn(context, Groups.NOTIFICATIONS)) return
+    Store.setValue(context, field, value)
+    Reporter.deliver(context, mapOf(field to value), at)
+  }
+
+  private val FIELD_FROM_LISTENER = setOf("media", "navigation")
+
   /** After a Bluetooth connect / disconnect: read headphones again (wired or Bluetooth). */
   fun onHeadphonesMaybeChanged(context: Context) {
     if (!Store.groupOn(context, Groups.HEADPHONES)) return
@@ -81,6 +93,10 @@ internal object Senses {
       }
     }
     if (groups[Groups.MOTION] == false) Store.forgetValue(context, "motion")
+    if (groups[Groups.NOTIFICATIONS] == false) {
+      Store.forgetValue(context, "media")
+      Store.forgetValue(context, "navigation")
+    }
     Background.apply(context)
   }
 

@@ -42,6 +42,39 @@ class JophielActionsModule : Module() {
       openSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
     }
 
+    // ---- Phase 8 ----
+
+    AsyncFunction("setVolume") { level: Int -> PhoneActions.setVolume(context, level).toMap() }
+
+    AsyncFunction("setRinger") { mode: String -> PhoneActions.setRinger(context, mode).toMap() }
+
+    AsyncFunction("setDnd") { on: Boolean -> PhoneActions.setDnd(context, on).toMap() }
+
+    AsyncFunction("setAlarm") { hour: Int, minute: Int, label: String?, days: List<Int> ->
+      PhoneActions.setAlarm(context, appContext.currentActivity, hour, minute, label, days).toMap()
+    }
+
+    AsyncFunction("setTimer") { seconds: Int, label: String? ->
+      PhoneActions.setTimer(context, appContext.currentActivity, seconds, label).toMap()
+    }
+
+    AsyncFunction("openApp") { name: String -> PhoneActions.openApp(context, appContext.currentActivity, name).toMap() }
+
+    AsyncFunction("openLink") { url: String -> PhoneActions.openLink(context, appContext.currentActivity, url).toMap() }
+
+    AsyncFunction("playMusic") { query: String -> PhoneActions.playMusic(context, appContext.currentActivity, query).toMap() }
+
+    AsyncFunction("whatsappDraft") { to: String?, text: String ->
+      PhoneActions.whatsappDraft(context, appContext.currentActivity, to, text).toMap()
+    }
+
+    /** Do Not Disturb access: silent mode and DND on / off. */
+    Function("hasDndAccess") { PhoneActions.hasDndAccess(context) }
+
+    Function("openDndSettings") {
+      openSettings(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+    }
+
     Function("openFullScreenIntentSettings") {
       if (Build.VERSION.SDK_INT >= 34) {
         openSettings(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}")))

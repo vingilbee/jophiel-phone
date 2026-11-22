@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { runLocalAction } from '@/actions'
 import type { ActionResult } from '@/actions/protocol'
 import { AppText } from '@/components/AppText'
-import { Button, IconButton, SectionHeader, SwitchRow } from '@/components/Controls'
+import { Button, IconButton, SectionHeader, SwitchRow, TextField } from '@/components/Controls'
+import { lastSeenNotification } from '@/notifications'
 import { Snackbar } from '@/components/Snackbar'
 import { microphonePermission, requestMicrophonePermission } from '@/setup/permissions'
 import { radius, space, useColors } from '@/theme'
@@ -321,7 +322,15 @@ const DELAYED_MS = 10_000
 function resultText(result: ActionResult | null): string {
   if (!result) return 'Already handled'
   const accuracy = result.data && 'accuracy_m' in result.data ? ` (position to ±${result.data.accuracy_m} m, not shown)` : ''
-  return `${result.status}${result.reason ? `: ${result.reason}` : ''}${accuracy}`
+  const opened = result.data && 'opened' in result.data ? ` (opened ${result.data.opened})` : ''
+  const target = result.data && 'target' in result.data ? ` (${result.data.target})` : ''
+  return `${result.status}${result.reason ? `: ${result.reason}` : ''}${accuracy}${opened}${target}`
+}
+
+/** "HH:MM" two minutes from now, for the alarm test. */
+function inTwoMinutes(): string {
+  const at = new Date(Date.now() + 2 * 60_000)
+  return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
 }
 
 /**
@@ -360,7 +369,80 @@ function ActionsTest({ onResult }: { onResult: (text: string) => void }) {
         />
         <Button label="Get position" variant="tonal" icon="crosshairs-gps" disabled={pending !== null} onPress={() => run('get_position', 'get_position', {})} />
       </View>
+      <Phase8Tests pending={pending} run={run} />
     </View>
+  )
+}
+
+/**
+ * Phase 8: one button per new action, run here before the backend has them. Reply / dismiss use the
+ * newest notification that went over the socket while the app was open (post one to yourself first).
+ */
+function Phase8Tests({ pending, run }: { pending: string | null; run: (label: string, action: string, args: Record<string, unknown>, delayMs?: number) => void }) {
+  const [name, setName] = useState('Spotify')
+  const [to, setTo] = useState('')
+  const busy = pending !== null
+  const b = (label: string, icon: Parameters<typeof Button>[0]['icon'], action: string, args: Record<string, unknown>, delayMs = 0) => (
+    <Button key={label} label={label} variant="tonal" icon={icon} disabled={busy} onPress={() => run(label, action, args, delayMs)} />
+  )
+  const latest = () => lastSeenNotification()
+  return (
+    <>
+      <AppText role="titleSmall">Media and sound</AppText>
+      <View style={styles.buttons}>
+        {b('Pause', 'pause', 'media_control', { command: 'pause' })}
+        {b('Play', 'play', 'media_control', { command: 'play' })}
+        {b('Next', 'skip-next', 'media_control', { command: 'next' })}
+        {b('Volume 30', 'volume-medium', 'set_volume', { level: 30 })}
+        {b('Vibrate', 'vibrate', 'set_ringer', { mode: 'vibrate' })}
+        {b('Ringer on', 'bell-outline', 'set_ringer', { mode: 'normal' })}
+        {b('DND on', 'minus-circle-outline', 'set_dnd', { on: true })}
+        {b('DND off', 'minus-circle-off-outline', 'set_dnd', { on: false })}
+      </View>
+      <AppText role="titleSmall">Clock</AppText>
+      <View style={styles.buttons}>
+        <Button label="Alarm in 2 min" variant="tonal" icon="alarm" disabled={busy} onPress={() => run('set_alarm', 'set_alarm', { time: inTwoMinutes(), label: 'Jophiel test' })} />
+        {b('Timer 60 s', 'timer-outline', 'set_timer', { seconds: 60, label: 'Jophiel test' })}
+        {b('Timer in 10 s', 'timer-sand', 'set_timer', { seconds: 60, label: 'Jophiel test' }, DELAYED_MS)}
+      </View>
+      <AppText role="titleSmall">Notifications</AppText>
+      <View style={styles.buttons}>
+        <Button
+          label="Reply to newest"
+          variant="tonal"
+          icon="reply-outline"
+          disabled={busy}
+          onPress={() => {
+            const n = latest()
+            run(`reply_notification${n ? ` (${n.title})` : ''}`, 'reply_notification', {
+              key: n?.key ?? 'none',
+              conversation_id: n?.conversationId,
+              revision: n?.revision,
+              text: 'Test reply from Jophiel (phone half, phase 8)',
+            })
+          }}
+        />
+        <Button
+          label="Dismiss newest"
+          variant="tonal"
+          icon="close-circle-outline"
+          disabled={busy}
+          onPress={() => run('dismiss_notification', 'dismiss_notification', { key: latest()?.key ?? 'none' })}
+        />
+      </View>
+      <AppText role="titleSmall">Opening</AppText>
+      <TextField label="App name, link or song" value={name} onChangeText={setName} autoCapitalize="none" />
+      <View style={styles.buttons}>
+        {b('Open app', 'apps', 'open_app', { name })}
+        {b('Open app in 10 s', 'timer-outline', 'open_app', { name }, DELAYED_MS)}
+        {b('Open link', 'link-variant', 'open_link', { url: name.startsWith('http') ? name : 'https://discord.com/app' })}
+        {b('Play on Spotify', 'spotify', 'play_music', { query: name })}
+      </View>
+      <TextField label="WhatsApp draft to (empty: picker)" value={to} onChangeText={setTo} />
+      <View style={styles.buttons}>
+        {b('WhatsApp draft', 'whatsapp', 'whatsapp_draft', { ...(to.trim() ? { to } : {}), text: 'Hi! (a draft from Jophiel, not sent)' })}
+      </View>
+    </>
   )
 }
 

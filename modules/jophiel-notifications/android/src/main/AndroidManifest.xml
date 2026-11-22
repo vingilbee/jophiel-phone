@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Phase 8: who's a contact (in_contacts, sender ids); the number never leaves the phone. -->
+  <uses-permission android:name="android.permission.READ_CONTACTS" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+  <application>
+    <!--
+      Notifications as a sense: every app's notifications (and removals), now playing, the Maps
+      trip. Bound by Android once "Notification access" is on, also with the app closed.
+    -->
+    <service
+      android:name="expo.modules.jophielnotifications.JophielNotificationListener"
+      android:label="Jophiel"
+      android:exported="true"
+      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

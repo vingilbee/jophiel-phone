@@ -1,13 +1,16 @@
 import { PHONE_FIELDS, type PhoneField, type PhoneStateReport } from '@/chat/frames'
 import { GROUP_FIELDS, SENSE_GROUPS, sameSwitches, switchedOff, type SenseSwitches } from './groups'
-import { changes, checkFields, effective, fieldsOf, isEmpty, type Known } from './report'
+import { changes, checkFields, effective, fieldsOf, isEmpty, sameValue, type Known } from './report'
 
 /**
  * Fields that come from wake-ups (geofences, activity transitions), not from live readers. The
  * native module is their source of truth: it forgets them when their group is switched off, and its
  * snapshot leaves them out until a fresh reading arrives.
  */
-const WAKE_UP_FIELDS: readonly PhoneField[] = ['motion', 'place']
+const WAKE_UP_FIELDS: readonly PhoneField[] = ['motion', 'place', 'media', 'navigation']
+
+/** Fields JS itself knows (a setting), not the native module: a snapshot never clears them. */
+const LOCAL_FIELDS: readonly PhoneField[] = ['replies_paused']
 
 /** What the controller needs from the native module (a stand-in in tests; null in an old build). */
 export interface SensesNative {
@@ -142,6 +145,33 @@ export class PhoneSenses {
     this.native?.noteSent(fields, Number.isFinite(parsed) ? parsed : this.now())
   }
 
+  /**
+   * A field JS knows itself (phase 8: `replies_paused`, from Settings). `send`: it just changed, so
+   * tell her now (the socket if open, else a background PUT); otherwise the next `sense` frame
+   * carries it.
+   */
+  setLocal(fields: Known, send: boolean) {
+    const now = this.now()
+    let changed = false
+    for (const field of LOCAL_FIELDS) {
+      if (!(field in fields)) continue
+      const value = fields[field]
+      this.seenAt[field] = now
+      if (sameValue(this.known[field], value)) continue
+      ;(this.known as Record<string, unknown>)[field] = value
+      changed = true
+    }
+    if (!changed || !send) return
+    if (this.link?.isOpen()) {
+      this.flush()
+      return
+    }
+    const out = effective(this.known, this.switches)
+    const background: Record<string, unknown> = {}
+    for (const field of LOCAL_FIELDS) if (field in fields && field in out) background[field] = out[field]
+    if (this.native && !isEmpty(background as Known)) this.native.sendInBackground(background, now)
+  }
+
   /** Sign-out: off, and nothing about this account kept. */
   reset() {
     this.setLive(false)
@@ -176,7 +206,7 @@ export class PhoneSenses {
       const seen = this.seenAt[field]
       if (seen !== undefined && at < seen) continue
       const value = fields[field]
-      if (this.known[field] === value) {
+      if (sameValue(this.known[field], value)) {
         // Re-confirmed: later stragglers must be newer than this.
         this.seenAt[field] = at
         continue

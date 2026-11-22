@@ -85,6 +85,12 @@ src/connection/     backoff + banner state
 src/setup/          permission reads (always from Android)
 src/voice/          voice call: useVoiceSession (ported from the web), VAD, ring buffer, player, capture, tuning
 modules/jophiel-audio/  native mic + playback in one Android voice-communication session (Kotlin)
+modules/jophiel-senses/ phone senses: live readers, geofences, motion, background PUT (Kotlin)
+modules/jophiel-actions/ her actions: Maps, volume, ringer/DND, alarms, opening apps/links, Spotify, WhatsApp drafts (Kotlin)
+modules/jophiel-notifications/ notifications as a sense (listener), replies, dismiss, media control (Kotlin)
+src/actions/        the phone-action channel: parse, checks, dispatch, answer once
+src/notifications/  notification frames over the socket while live
+src/senses/         phone senses controller (sense frames), groups, places
 src/components/     UI building blocks
 src/theme/          palette + type tokens
 plugins/            config plugin: notification status-bar icon

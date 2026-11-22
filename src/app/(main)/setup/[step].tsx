@@ -2,7 +2,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { actionsAvailable, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
+import { actionsAvailable, openDndSettings, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
+import { notificationsAvailable, openNotificationAccessSettings } from '@/notifications'
 import { checkHealth } from '@/api/auth'
 import { AppText } from '@/components/AppText'
 import { Button, Icon, type IconName } from '@/components/Controls'
@@ -13,8 +14,10 @@ import {
   hasBackgroundLocationPermission,
   hasFullScreenPermission,
   hasNearbyPermission,
+  hasRestrictedSettings,
   openAppSettings,
   openBatterySettings,
+  requestContactsPermission,
   requestMicrophonePermission,
   requestNotificationPermission,
   showsBatteryStep,
@@ -34,6 +37,10 @@ const STEP_IDS = [
   'nearby',
   'overlay',
   'full-screen',
+  'restricted-settings',
+  'notification-access',
+  'dnd-access',
+  'contacts',
   'battery',
 ] as const
 
@@ -62,6 +69,15 @@ function steps(p: Permissions, current: StepId): StepId[] {
         return actionsAvailable
       case 'full-screen':
         return actionsAvailable && hasFullScreenPermission
+      case 'restricted-settings':
+        // Only needed until notification access is on (Android has no way to read the setting).
+        return notificationsAvailable && hasRestrictedSettings && (current === id || p.notificationAccess !== 'granted')
+      case 'notification-access':
+        return notificationsAvailable
+      case 'dnd-access':
+        return actionsAvailable
+      case 'contacts':
+        return notificationsAvailable || actionsAvailable
       case 'battery':
         return showsBatteryStep()
       default:
@@ -133,6 +149,13 @@ export default function SetupStep() {
         return permissions.overlay === 'granted'
       case 'full-screen':
         return permissions.fullScreen === 'granted'
+      case 'restricted-settings':
+      case 'notification-access':
+        return permissions.notificationAccess === 'granted'
+      case 'dnd-access':
+        return permissions.dndAccess === 'granted'
+      case 'contacts':
+        return permissions.contacts === 'granted'
       case 'battery':
         return permissions.battery === 'granted'
     }
@@ -300,6 +323,52 @@ export default function SetupStep() {
       body =
         'So she can wake the screen and start navigation when the phone is in your pocket and no PIN is needed (for example with Smart Lock and your earphones). Android calls this “Full-screen notifications”. With a PIN, she sends a notification and asks you to unlock.'
       action = done ? null : { label: 'Open the setting', onPress: () => openFullScreenIntentSettings() }
+      break
+    case 'restricted-settings':
+      icon = 'shield-lock-open-outline'
+      title = 'Allow restricted settings'
+      body =
+        'Android keeps apps installed from a file (like this one) away from notification access until you allow it. In App info, tap ⋮ (top right) → “Allow restricted settings”, confirm, then come back. If there’s no ⋮ menu yet, tap Next, try to turn on notification access once (Android refuses), then come back here: the menu shows up after that.'
+      action = done ? null : { label: 'Open App info', onPress: () => void openBatterySettings() }
+      break
+    case 'notification-access':
+      icon = 'bell-ring-outline'
+      title = 'What lands on your phone'
+      body =
+        'So she knows the notifications you get from every app (messages, codes, reminders) and when they go away, what’s playing, and the next turn while Google Maps navigates. It’s also how she replies through a notification’s reply button, and pauses or skips music. Tap below, turn Jophiel on, then come back. You can switch it off any time in Settings → Phone senses.'
+      action = done ? null : { label: 'Open notification access', onPress: () => openNotificationAccessSettings() }
+      if (!done && hasRestrictedSettings) {
+        problem = 'If Android says it’s a restricted setting, go back one step and allow restricted settings first.'
+      }
+      break
+    case 'dnd-access':
+      icon = 'minus-circle-outline'
+      title = 'Silent mode and Do Not Disturb'
+      body =
+        'So she can put the phone on silent or turn Do Not Disturb on and off when you ask (or when it fits, like a meeting). Android calls this “Do Not Disturb access”. Tap below, allow it for Jophiel, then come back.'
+      action = done ? null : { label: 'Open the setting', onPress: () => openDndSettings() }
+      break
+    case 'contacts':
+      icon = 'account-multiple-outline'
+      title = 'Who’s who'
+      body =
+        'So she can tell your contacts from strangers when a message comes in, and pre-type a WhatsApp message to someone by name. Numbers and the address book stay on this phone; she only learns whether a sender is one of your contacts.'
+      action =
+        permissions.contacts === 'blocked'
+          ? { label: 'Open app settings', onPress: () => void openAppSettings() }
+          : done
+            ? null
+            : {
+                label: 'Allow contacts',
+                onPress: () =>
+                  void requestContactsPermission().then((result) => {
+                    if (result !== 'unknown') learn('contacts', result)
+                    refresh()
+                  }),
+              }
+      if (permissions.contacts === 'blocked') {
+        problem = "Android won't ask again. In the app settings, tap Permissions → Contacts and allow it."
+      }
       break
     case 'battery':
       icon = 'battery-heart-variant'

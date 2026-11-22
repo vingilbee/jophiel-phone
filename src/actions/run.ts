@@ -1,41 +1,119 @@
 import { destinationTitle, mapsUrl } from './maps'
 import type { Place } from '@/senses/places'
-import { isExpired, navigateArgs, type ActionResult, type PhoneAction, type PositionData } from './protocol'
+import { ACTION_GROUP, type ActionGroups } from './groups'
+import {
+  alarmArgs,
+  dndArgs,
+  draftArgs,
+  isExpired,
+  keyArgs,
+  mediaArgs,
+  navigateArgs,
+  openAppArgs,
+  openLinkArgs,
+  playMusicArgs,
+  replyArgs,
+  ringerArgs,
+  timerArgs,
+  volumeArgs,
+  type ActionResult,
+  type AlarmArgs,
+  type MediaCommand,
+  type PhoneAction,
+  type PositionData,
+  type ReplyArgs,
+  type RingerMode,
+} from './protocol'
 
 export type PositionAnswer =
   | { latitude: number; longitude: number; accuracy: number; fixAt: number; error?: undefined }
   | { error: 'no_permission' | 'location_off' | 'no_fix' | 'not_supported' }
+
+/** What a native device action answered (`data`: `opened` / `target`). */
+export interface DeviceAnswer {
+  status: 'done' | 'notified' | 'refused' | 'failed'
+  reason: string | null
+  data?: { opened?: string; target?: 'contact' | 'picker' } | null
+}
+
+/** Phase 8's device actions (modules/jophiel-actions and jophiel-notifications); args already checked. */
+export interface DeviceDeps {
+  mediaControl: (command: MediaCommand) => Promise<DeviceAnswer>
+  setVolume: (level: number) => Promise<DeviceAnswer>
+  setAlarm: (args: AlarmArgs) => Promise<DeviceAnswer>
+  setTimer: (seconds: number, label: string | null) => Promise<DeviceAnswer>
+  setRinger: (mode: RingerMode) => Promise<DeviceAnswer>
+  setDnd: (on: boolean) => Promise<DeviceAnswer>
+  dismiss: (key: string) => Promise<DeviceAnswer>
+  reply: (args: ReplyArgs) => Promise<DeviceAnswer>
+  openApp: (name: string) => Promise<DeviceAnswer>
+  openLink: (url: string) => Promise<DeviceAnswer>
+  playMusic: (query: string) => Promise<DeviceAnswer>
+  whatsappDraft: (to: string | null, text: string) => Promise<DeviceAnswer>
+}
+
+/** The switches an action is checked against (read when it arrives). */
+export interface ActionSwitches {
+  /** Settings → "Let Jophiel act on this phone" (the master switch). */
+  actionsEnabled: boolean
+  /** Phase 6's Places group. */
+  placesOn: boolean
+  /** Phase 8: the Notifications sense (without it she knows no notification to reply to or dismiss). */
+  notificationsOn: boolean
+  /** Phase 8: Media, Messages, Alarms & timers, Opening apps. */
+  groups: ActionGroups
+}
 
 /** Everything an action needs from the phone; stand-ins in tests (src/actions/actions.test.ts). */
 export interface ActionDeps {
   now: () => number
   /** First time this action id is seen (a frame and a late push can both bring it). */
   claim: (actionId: string) => Promise<boolean>
-  /** Settings → "Let Jophiel act on this phone", and the phase 6 Places group. */
-  switches: () => Promise<{ actionsEnabled: boolean; placesOn: boolean }>
+  switches: () => Promise<ActionSwitches>
   openMaps: (url: string, title: string) => Promise<{ status: 'done' | 'notified' | 'failed'; reason: string | null }>
   position: () => Promise<PositionAnswer>
   /** Settings → Places (phase 6), for `resolve_saved_place`. */
   places: () => Promise<Place[]>
+  device: DeviceDeps
   /** Hand the result to the backend (socket, else the API); skipped for local actions. */
   deliver: (action: PhoneAction, result: ActionResult) => Promise<void>
 }
 
+/** Need a notification she was told about. */
+const USES_NOTIFICATIONS = new Set(['reply_notification', 'dismiss_notification'])
+
 /**
  * The checks every action passes, in order: too late → `expired`; the master switch → `refused`,
- * `switched_off`; per action (`get_position`: the Places group → `refused`, `places_off`). Null: go
- * ahead. `resolve_saved_place` needs the Places group too. Permission and "location is on" are read natively when the position is taken.
+ * `switched_off`; per action: `get_position` / `resolve_saved_place` need the Places group
+ * (`places_off`); phase 8's groups (the Messages switch off → `replies_paused`, any other →
+ * `switched_off`); replying to or dismissing a notification needs the Notifications sense
+ * (`switched_off`). Null: go ahead. Permissions are read natively when the action runs.
  */
-export function precheck(
-  action: PhoneAction,
-  now: number,
-  switches: { actionsEnabled: boolean; placesOn: boolean },
-): ActionResult | null {
+export function precheck(action: PhoneAction, now: number, switches: ActionSwitches): ActionResult | null {
   if (isExpired(action, now)) return { status: 'expired' }
   if (!switches.actionsEnabled) return { status: 'refused', reason: 'switched_off' }
   const usesPlaces = action.action === 'get_position' || action.action === 'resolve_saved_place'
   if (usesPlaces && !switches.placesOn) return { status: 'refused', reason: 'places_off' }
+  const group = ACTION_GROUP[action.action]
+  if (group && !switches.groups[group]) return { status: 'refused', reason: group === 'messages' ? 'replies_paused' : 'switched_off' }
+  if (USES_NOTIFICATIONS.has(action.action) && !switches.notificationsOn) return { status: 'refused', reason: 'switched_off' }
   return null
+}
+
+function answered(answer: DeviceAnswer): ActionResult {
+  const result: ActionResult = { status: answer.status }
+  if (answer.reason) result.reason = answer.reason
+  if (answer.data?.opened) result.data = { opened: answer.data.opened }
+  else if (answer.data?.target) result.data = { target: answer.data.target }
+  return result
+}
+
+const BAD_ARGS: ActionResult = { status: 'failed', reason: 'bad_args' }
+
+/** Phase 8: check the args, then hand it to the native side. */
+async function device<T>(args: T | null, run: (args: T) => Promise<DeviceAnswer>): Promise<ActionResult> {
+  if (args === null) return BAD_ARGS
+  return answered(await run(args))
 }
 
 async function navigate(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
@@ -101,6 +179,31 @@ function perform(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
       return getPosition(deps)
     case 'resolve_saved_place':
       return resolveSavedPlace(action, deps)
+    // ---- Phase 8 ----
+    case 'media_control':
+      return device(mediaArgs(action.args), deps.device.mediaControl)
+    case 'set_volume':
+      return device(volumeArgs(action.args), deps.device.setVolume)
+    case 'set_alarm':
+      return device(alarmArgs(action.args), deps.device.setAlarm)
+    case 'set_timer':
+      return device(timerArgs(action.args), (a) => deps.device.setTimer(a.seconds, a.label))
+    case 'set_ringer':
+      return device(ringerArgs(action.args), deps.device.setRinger)
+    case 'set_dnd':
+      return device(dndArgs(action.args), deps.device.setDnd)
+    case 'dismiss_notification':
+      return device(keyArgs(action.args), deps.device.dismiss)
+    case 'reply_notification':
+      return device(replyArgs(action.args), deps.device.reply)
+    case 'open_app':
+      return device(openAppArgs(action.args), deps.device.openApp)
+    case 'open_link':
+      return device(openLinkArgs(action.args), deps.device.openLink)
+    case 'play_music':
+      return device(playMusicArgs(action.args), deps.device.playMusic)
+    case 'whatsapp_draft':
+      return device(draftArgs(action.args), (a) => deps.device.whatsappDraft(a.to, a.text))
     default:
       return Promise.resolve({ status: 'failed', reason: 'unknown_action' })
   }

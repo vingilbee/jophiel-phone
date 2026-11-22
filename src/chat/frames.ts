@@ -132,6 +132,9 @@ export const PHONE_FIELDS = [
   'ringer',
   'motion',
   'place',
+  'media',
+  'navigation',
+  'replies_paused',
 ] as const
 
 export type PhoneField = (typeof PHONE_FIELDS)[number]
@@ -152,6 +155,36 @@ export interface PhoneState {
   motion: 'still' | 'walking' | 'running' | 'cycling' | 'vehicle' | null
   /** A place's name (at most 60 characters), never coordinates. */
   place: string | null
+  /** Phase 8: now playing (from the notification listener). */
+  media: MediaState | null
+  /** Phase 8: the Maps trip's next step and time left, while navigating. */
+  navigation: NavigationState | null
+  /** Phase 8: Settings → Phone actions → Messages is off, so her replies and drafts are paused. */
+  replies_paused: boolean | null
+}
+
+export interface MediaState {
+  app: string
+  title: string
+  artist: string | null
+  state: 'playing' | 'paused'
+}
+
+export interface NavigationState {
+  next_step: string
+  distance_text: string | null
+  eta_text: string | null
+}
+
+/**
+ * Phase 8: notifications as a sense (PLAN_PHASE_8.md "Notifications"). Built natively
+ * (modules/jophiel-notifications) and passed through as is: over the socket while it's open, else
+ * `POST /api/phone/notifications` with the same body.
+ */
+export interface PhoneNotificationsFrame {
+  type: 'phone_notifications'
+  posted: unknown[]
+  removed: { key: string; reason: string }[]
 }
 
 export type PhoneStateReport = Partial<PhoneState> & {
@@ -199,6 +232,7 @@ export type ClientFrame =
   | SenseFrame
   | VoiceFrame
   | PhoneActionResultFrame
+  | PhoneNotificationsFrame
   | { type: 'stop'; conversation_id: string | null; turn_id?: string | null }
 
 /**

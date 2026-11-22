@@ -16,7 +16,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 internal const val TAG = "JophielSenses"
 
-/** The seven switch groups (Settings → Phone senses) and the fields each one reports. */
+/** The switch groups (Settings → Phone senses) and the fields each one reports. */
 internal object Groups {
   const val PHONE_USE = "phoneUse"
   const val BATTERY = "battery"
@@ -25,6 +25,8 @@ internal object Groups {
   const val SOUND_MODE = "soundMode"
   const val MOTION = "motion"
   const val PLACES = "places"
+  /** Phase 8: now playing and the Maps trip (from the notification listener), and whether her replies are paused. */
+  const val NOTIFICATIONS = "notifications"
 
   val FIELDS: Map<String, List<String>> = linkedMapOf(
     PHONE_USE to listOf("screen", "locked"),
@@ -34,6 +36,7 @@ internal object Groups {
     SOUND_MODE to listOf("dnd", "ringer"),
     MOTION to listOf("motion"),
     PLACES to listOf("place"),
+    NOTIFICATIONS to listOf("media", "navigation", "replies_paused"),
   )
 }
 
@@ -138,7 +141,7 @@ internal object Store {
   @Synchronized
   fun setValue(context: Context, field: String, value: Any?) {
     val json = obj(context, VALUES)
-    json.put(field, value ?: JSONObject.NULL)
+    json.put(field, json(value))
     prefs(context).edit().putString(VALUES, json.toString()).apply()
   }
 
@@ -161,7 +164,7 @@ internal object Store {
   @Synchronized
   fun markHanded(context: Context, fields: Map<String, Any?>) {
     val handed = obj(context, HANDED)
-    fields.forEach { (name, value) -> handed.put(name, value ?: JSONObject.NULL) }
+    fields.forEach { (name, value) -> handed.put(name, json(value)) }
     prefs(context).edit().putString(HANDED, handed.toString()).apply()
   }
 
@@ -179,7 +182,7 @@ internal object Store {
       if (old != null && at < oldAt) return@forEach
       val same = old != null && normalize(old.opt("value")) == value
       val since = if (same) old!!.optLong("since", at) else at
-      reported.put(name, JSONObject().put("value", value ?: JSONObject.NULL).put("at", at).put("since", since))
+      reported.put(name, JSONObject().put("value", json(value)).put("at", at).put("since", since))
     }
     prefs(context).edit().putString(REPORTED, reported.toString()).apply()
   }
@@ -237,11 +240,24 @@ internal object Store {
     prefs(context).edit().remove(CREDENTIALS).apply()
   }
 
-  /** JSON and the JS bridge give numbers as Double / Long; compare them as the Int they are. */
+  /**
+   * JSON and the JS bridge give numbers as Double / Long; compare them as the Int they are. Objects
+   * (phase 8's `media`, `navigation`) become sorted maps, so a stored JSONObject and a map from JS
+   * with the same contents are equal.
+   */
   fun normalize(value: Any?): Any? = when (value) {
     null, JSONObject.NULL -> null
     is Number -> value.toDouble().let { if (it == Math.floor(it) && !it.isInfinite()) it.toInt() else it }
+    is JSONObject -> sortedMapOf<String, Any?>().apply { value.keys().forEach { put(it, normalize(value.opt(it))) } }
+    is Map<*, *> -> sortedMapOf<String, Any?>().apply { value.forEach { (k, v) -> if (k is String) put(k, normalize(v)) } }
     else -> value
+  }
+
+  /** A value as it's written into JSON (maps as objects, null as JSON null). */
+  fun json(value: Any?): Any = when (val v = normalize(value)) {
+    null -> JSONObject.NULL
+    is Map<*, *> -> JSONObject().apply { v.forEach { (k, item) -> put(k as String, json(item)) } }
+    else -> v
   }
 }
 

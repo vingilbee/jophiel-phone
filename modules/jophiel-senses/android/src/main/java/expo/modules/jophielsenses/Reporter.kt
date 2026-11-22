@@ -59,7 +59,7 @@ internal object Reporter {
     if (changed.isEmpty()) return
     Store.markHanded(app, changed)
     val body = JSONObject()
-    changed.forEach { (name, value) -> body.put(name, Store.normalize(value) ?: JSONObject.NULL) }
+    changed.forEach { (name, value) -> body.put(name, Store.json(value)) }
     val data = Data.Builder().putString(ReportWorker.FIELDS, body.toString()).putLong(ReportWorker.AT, at).build()
     val request = OneTimeWorkRequest.Builder(ReportWorker::class.java)
       .setInputData(data)

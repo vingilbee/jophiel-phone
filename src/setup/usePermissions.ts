@@ -6,10 +6,13 @@ import {
   approximateLocationOnly,
   backgroundLocationPermission,
   batteryPermission,
+  contactsPermission,
+  dndAccessPermission,
   fullScreenPermission,
   locationPermission,
   microphonePermission,
   nearbyPermission,
+  notificationAccessPermission,
   notificationPermission,
   overlayPermission,
   showsBatteryStep,
@@ -34,9 +37,15 @@ export interface Permissions {
   overlay: PermissionState
   /** Phase 7: full-screen notifications (wake the screen to start navigation; Android 14+). */
   fullScreen: PermissionState
+  /** Phase 8: "Notification access" (notifications, replies, now playing, the Maps trip). */
+  notificationAccess: PermissionState
+  /** Phase 8: Do Not Disturb access (silent mode, DND on / off). */
+  dndAccess: PermissionState
+  /** Phase 8: contacts (who's a contact, WhatsApp drafts to a named person). */
+  contacts: PermissionState
 }
 
-type Blockable = 'notifications' | 'microphone' | 'location' | 'backgroundLocation' | 'activity' | 'nearby'
+type Blockable = 'notifications' | 'microphone' | 'location' | 'backgroundLocation' | 'activity' | 'nearby' | 'contacts'
 
 const INITIAL: Permissions = {
   notifications: 'unknown',
@@ -49,6 +58,9 @@ const INITIAL: Permissions = {
   nearby: 'unknown',
   overlay: 'unknown',
   fullScreen: 'unknown',
+  notificationAccess: 'unknown',
+  dndAccess: 'unknown',
+  contacts: 'unknown',
 }
 
 /**
@@ -71,6 +83,9 @@ export function usePermissions(): [Permissions, () => void, (name: Blockable, st
         nearby: await nearbyPermission(),
         overlay: overlayPermission(),
         fullScreen: fullScreenPermission(),
+        notificationAccess: notificationAccessPermission(),
+        dndAccess: dndAccessPermission(),
+        contacts: await contactsPermission(),
       }
       // Android only says "blocked" when asked; a later check reads "denied". Keep what we learned.
       setState((prev) => {
@@ -83,6 +98,7 @@ export function usePermissions(): [Permissions, () => void, (name: Blockable, st
           backgroundLocation: keep('backgroundLocation'),
           activity: keep('activity'),
           nearby: keep('nearby'),
+          contacts: keep('contacts'),
         }
       })
     })()

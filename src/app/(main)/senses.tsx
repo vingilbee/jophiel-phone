@@ -4,7 +4,8 @@ import { ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppText } from '@/components/AppText'
 import { Button, Icon, IconButton, ListRow, SwitchRow } from '@/components/Controls'
-import { describeGroup, type LastReported } from '@/senses/describe'
+import { notificationsStatus } from '@/notifications'
+import { agoLabel, describeGroup, type LastReported } from '@/senses/describe'
 import { SENSE_GROUPS, type SenseGroup } from '@/senses/groups'
 import { lastReported, sensesAvailable } from '@/senses/native'
 import type { PermissionState } from '@/setup/permissions'
@@ -21,6 +22,10 @@ const GROUP_TEXT: Record<SenseGroup, { title: string; what: string }> = {
   soundMode: { title: 'Sound mode', what: 'Ringer, vibrate or silent, and Do Not Disturb' },
   motion: { title: 'Motion', what: 'Still, walking, running, cycling or in a vehicle' },
   places: { title: 'Places', what: 'Arriving at and leaving your saved places, by name' },
+  notifications: {
+    title: 'Notifications',
+    what: 'Notifications from every app and when they go away, what’s playing, and the next turn while Google Maps navigates',
+  },
 }
 
 interface Need {
@@ -58,9 +63,26 @@ function needFor(group: SenseGroup, p: Permissions): Need | null {
             text: 'Only when you open the app. For arrivals and departures with the app closed, set location to “Allow all the time”.',
           }
         : null
+    case 'notifications':
+      return p.notificationAccess === 'denied'
+        ? {
+            permission: 'notificationAccess',
+            state: p.notificationAccess,
+            text: 'Needs Notification access (Android 13+: allow restricted settings in App info first).',
+          }
+        : null
     default:
       return null
   }
+}
+
+/** The notifications themselves: how many she knows of, and when the last ones went out. */
+function notificationsLine(now: number): string | null {
+  const status = notificationsStatus()
+  if (!status || !status.access) return null
+  if (!status.connected) return 'Android hasn’t started the listener yet'
+  const count = status.known === 1 ? '1 notification' : `${status.known} notifications`
+  return status.lastSentAt > 0 ? `${count} on the phone · last sent ${agoLabel(status.lastSentAt, now)}` : count
 }
 
 export default function Senses() {
@@ -91,7 +113,7 @@ export default function Senses() {
 
   const ask = async (need: Need) => {
     const result = await askSensePermission(need.permission, need.state)
-    if (result !== 'unknown') learn(need.permission, result)
+    if (result !== 'unknown' && need.permission !== 'notificationAccess') learn(need.permission, result)
     refresh()
   }
 
@@ -109,7 +131,7 @@ export default function Senses() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}>
         <AppText role="bodyMedium" color="onSurfaceVariant" style={styles.intro}>
           What this phone tells her about itself, so she can notice and react. She gets them while the app is open or a call is
-          on. With the app closed, only places, motion and Bluetooth headphones still reach her.
+          on. With the app closed, only places, motion, Bluetooth headphones and notifications still reach her.
         </AppText>
 
         {!sensesAvailable ? (
@@ -123,7 +145,8 @@ export default function Senses() {
         {SENSE_GROUPS.map((group) => {
           const on = settings.senses[group]
           const need = on ? needFor(group, permissions) : null
-          const told = describeGroup(group, last, now)
+          const state = describeGroup(group, last, now)
+          const told = group === 'notifications' ? [notificationsLine(now), state].filter(Boolean).join('; ') || null : state
           return (
             <View key={group} style={[styles.group, { borderBottomColor: colors.outlineVariant }]}>
               <SwitchRow title={GROUP_TEXT[group].title} supporting={GROUP_TEXT[group].what} value={on} onValueChange={(value) => toggle(group, value)} />
@@ -136,7 +159,15 @@ export default function Senses() {
                     {need.text}
                   </AppText>
                   <Button
-                    label={need.state === 'blocked' ? 'Open app settings' : need.permission === 'backgroundLocation' ? 'Open location settings' : 'Allow'}
+                    label={
+                      need.permission === 'notificationAccess'
+                        ? 'Open notification access'
+                        : need.state === 'blocked'
+                          ? 'Open app settings'
+                          : need.permission === 'backgroundLocation'
+                            ? 'Open location settings'
+                            : 'Allow'
+                    }
                     variant="tonal"
                     onPress={() => void ask(need)}
                     style={styles.panelButton}

@@ -3,7 +3,8 @@ import * as Battery from 'expo-battery'
 import * as Device from 'expo-device'
 import * as IntentLauncher from 'expo-intent-launcher'
 import { Linking, PermissionsAndroid, Platform } from 'react-native'
-import { canDrawOverlays, canUseFullScreenIntent } from '@/actions'
+import { canDrawOverlays, canUseFullScreenIntent, hasDndAccess } from '@/actions'
+import { notificationAccess } from '@/notifications'
 
 /** Every state here is read from Android each time, never remembered. */
 export type PermissionState = 'granted' | 'denied' | 'blocked' | 'unknown'
@@ -204,4 +205,38 @@ export function fullScreenPermission(): PermissionState {
   if (!hasFullScreenPermission) return 'granted'
   const allowed = canUseFullScreenIntent()
   return allowed === null ? 'unknown' : allowed ? 'granted' : 'denied'
+}
+
+// ---- Phase 8: notifications as a sense, and more actions ----
+
+/**
+ * Android 13+ blocks notification access (and later accessibility) for an app installed from an
+ * APK until "Allow restricted settings" is on in its App info. Android doesn't say whether it is,
+ * so the step counts as done once notification access is on.
+ */
+export const hasRestrictedSettings = sdk >= 33
+
+/** "Notification access": notifications, replies, now playing, media control, the Maps trip. */
+export function notificationAccessPermission(): PermissionState {
+  const allowed = notificationAccess()
+  return allowed === null ? 'unknown' : allowed ? 'granted' : 'denied'
+}
+
+/** Do Not Disturb access: silent mode and DND on / off. */
+export function dndAccessPermission(): PermissionState {
+  const allowed = hasDndAccess()
+  return allowed === null ? 'unknown' : allowed ? 'granted' : 'denied'
+}
+
+/** Contacts: who's a contact (never the number), WhatsApp drafts to a named person. */
+export function contactsPermission(): Promise<PermissionState> {
+  return check(P.READ_CONTACTS)
+}
+
+export async function requestContactsPermission(): Promise<PermissionState> {
+  try {
+    return answer(await PermissionsAndroid.request(P.READ_CONTACTS))
+  } catch {
+    return 'unknown'
+  }
 }

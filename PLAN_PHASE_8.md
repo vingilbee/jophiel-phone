@@ -322,3 +322,63 @@ the Maps notification parser, per-action switch checks.
     message never causes a device action; her own replies to others come once identity, scoped recall
     and same-audience dispatch work; the phone adds `conversation_id`, `identity`, `event_id`,
     `revision`; pausing her replies = the Messages switch off, checked at dispatch.
+
+## Implementation notes (phone half, 2026-11-22, branch `phase-8-phone-actions`)
+
+Steps 8.1–8.6 are built on the phone side against the contract above. The backend (8.0) doesn't exist
+yet, so nothing has run end to end; the developer screen has a test button per action. 8.7 (S21 pass)
+is open.
+
+**Where it lives**
+- `modules/jophiel-notifications` (Kotlin, new): `JophielNotificationListener` (all work on its own
+  thread), `NotificationLogic.kt` (pure: filter, extraction, HMAC ids, 5 s coalescer, Maps trip parser,
+  reply check; JUnit `cd android && ./gradlew :jophiel-notifications:testDebugUnitTest`, 17 cases),
+  `Outbox.kt` (live → JS → socket; else a file + WorkManager `POST /api/phone/notifications`, one
+  unique chain so a removal never overtakes its post), `Contacts.kt`, `Media.kt`, `Store.kt`.
+- `modules/jophiel-actions` gained `PhoneActions.kt` (+ `ActionsLogic.kt`, pure: app-name matching,
+  WhatsApp target, volume steps; JUnit 10 more cases). Opening anything uses phase 7's rule
+  (`MapsLogic.choose`): straight away when an activity may start, else a "Tap to …" notification
+  (id 7002, channel "Actions") → `notified` with the same reasons as Maps (`background`, `locked`,
+  `screen_off` for the screen off without a PIN).
+- `modules/jophiel-senses`: `media` / `navigation` reach it from the listener as an explicit broadcast
+  to `FieldReceiver` (not exported), so the two modules don't depend on each other. Object values are
+  compared as sorted maps.
+- `src/actions/`: `groups.ts` (the four switches, which action is in which), `protocol.ts` (args per
+  action), `run.ts` (checks + dispatch), `index.ts` (native wiring). `src/notifications/` (frames over
+  the socket). Settings → Her actions has the four group switches; Settings → Permissions, Setup and
+  Phone senses have the new steps / rows.
+
+**Changed from or added to the contract** (for the backend agent)
+- `PhoneStateReport` gets three fields, all in the **Notifications** sense group: `media`,
+  `navigation`, and **`replies_paused: bool`** (the mirrored Messages switch; also true when the master
+  switch is off). Until the backend accepts them, a `sense` frame carrying one would be rejected whole
+  (`extra="forbid"`), so the backend half should land first.
+- Messages written on the phone (the owner's, or hers through a reply button) are in `messages` with
+  `identity: "owner"`, `sender_id: "owner"`, `in_contacts: false`, `sender` = the name the app shows for
+  the owner (often "You").
+- `removed[].reason`: `opened` (tapped), `cleared` (swiped / clear all), `app` (the app took it back),
+  `dismissed` (by her), `snoozed`, `timeout`, `switched_off` (the sense switched off: one batch with
+  every key), `removed` (anything else, including ones that went away while the listener wasn't bound).
+- `conversation_identity` (`shortcut` | `title`) is on each posted entry, as the plan's text says.
+- `revision` is kept per Android key across restarts (prefs), so a listener rebind doesn't reset it.
+
+**Reasons the phone sends** (in addition to phase 7's)
+
+| status | reason | when |
+|---|---|---|
+| `refused` | `switched_off` | the action's group is off (Media, Alarms & timers, Opening apps), or reply / dismiss with the Notifications sense off |
+| `refused` | `replies_paused` | `reply_notification` / `whatsapp_draft` with the Messages switch off (also re-checked natively at dispatch) |
+| `refused` | `no_notification_access` | reply / dismiss / media without notification access |
+| `refused` | `no_dnd_access` | silent mode / DND without Do Not Disturb access |
+| `failed` | `notification_gone` / `no_reply_button` / `stale` | reply: key not live / no `RemoteInput` / other conversation or newer revision than live |
+| `failed` | `no_media_session` | nothing playing or loaded |
+| `failed` | `app_not_found` / `ambiguous` | `open_app`: no launcher app by that name / several; also Spotify / WhatsApp / a clock app / a link handler missing |
+| `failed` | `not_connected` | access is on but Android hasn't bound the listener (yet) |
+| `done` / `notified` | `no_contacts_access` | `whatsapp_draft` with `to` but no contacts permission: the picker opened |
+
+**Open, for the S21 pass (8.7)**
+- Alarms and timers start the clock app's activity, so from the background they follow the same rule
+  as opening apps (Android 15 without a visible overlay → "Tap to set the alarm" notification).
+- Google Maps' navigation notification layout is a guess (title = distance, text = instruction, sub
+  text = time left / arrival); the parser fails soft. Check what Maps really shows.
+- Samsung's "Allow restricted settings" path; whether replies work locked; a busy group chat.

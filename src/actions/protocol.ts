@@ -14,7 +14,7 @@ const MODES: readonly TravelMode[] = ['drive', 'two_wheeler', 'walk', 'transit',
 
 export interface PhoneAction {
   actionId: string
-  /** `navigate_to`, `get_position`, `resolve_saved_place`; others (phase 8) answer `failed`, `unknown_action` until supported. */
+  /** Phase 7's `navigate_to`, `get_position`, `resolve_saved_place`, and phase 8's (see `run.ts`); others answer `failed`, `unknown_action`. */
   action: string
   args: Record<string, unknown>
   /** Epoch ms after which it's dropped as `expired`. */
@@ -39,10 +39,20 @@ export interface PlaceData {
   lng: number
 }
 
+/** Phase 8, `open_app`: the app's label as the launcher shows it. */
+export interface OpenedData {
+  opened: string
+}
+
+/** Phase 8, `whatsapp_draft`: into a contact's chat, or WhatsApp's picker (you pick the chat). */
+export interface DraftData {
+  target: 'contact' | 'picker'
+}
+
 export interface ActionResult {
   status: ResultStatus
   reason?: string
-  data?: PositionData | PlaceData
+  data?: PositionData | PlaceData | OpenedData | DraftData
 }
 
 export interface PhoneActionResultFrame extends ActionResult {
@@ -111,4 +121,118 @@ export function navigateArgs(args: Record<string, unknown>): NavigateArgs | null
 
 export function resultFrame(actionId: string, result: ActionResult): PhoneActionResultFrame {
   return { type: 'phone_action_result', action_id: actionId, ...result }
+}
+
+// ---- Phase 8 (PLAN_PHASE_8.md "Actions"): each one's args, or null → `failed`, `bad_args` ----
+
+/** Text she types into someone's chat: no more than this. */
+export const MAX_MESSAGE_TEXT = 4_000
+
+function textUpTo(value: unknown, max: number): string | null {
+  const t = text(value)
+  return t && Array.from(t).length <= max ? t : null
+}
+
+export type MediaCommand = 'play' | 'pause' | 'next' | 'previous'
+
+const MEDIA_COMMANDS: readonly MediaCommand[] = ['play', 'pause', 'next', 'previous']
+
+export function mediaArgs(args: Record<string, unknown>): MediaCommand | null {
+  return MEDIA_COMMANDS.includes(args.command as MediaCommand) ? (args.command as MediaCommand) : null
+}
+
+/** Media volume 0–100 (a number out of range is clamped; anything else is bad). */
+export function volumeArgs(args: Record<string, unknown>): number | null {
+  const level = args.level
+  if (typeof level !== 'number' || !Number.isFinite(level)) return null
+  return Math.min(100, Math.max(0, Math.round(level)))
+}
+
+export interface AlarmArgs {
+  hour: number
+  minute: number
+  label: string | null
+  /** java.util.Calendar days: Sunday 1 … Saturday 7. Empty: once. */
+  days: number[]
+}
+
+const DAYS: Record<string, number> = { sun: 1, mon: 2, tue: 3, wed: 4, thu: 5, fri: 6, sat: 7 }
+
+/** `time` "HH:MM" (24 h), `label?`, `days?` ("mon", "Monday", …). */
+export function alarmArgs(args: Record<string, unknown>): AlarmArgs | null {
+  const match = typeof args.time === 'string' ? /^\s*(\d{1,2}):(\d{2})\s*$/.exec(args.time) : null
+  if (!match) return null
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) return null
+  let days: number[] = []
+  if (args.days !== undefined && args.days !== null) {
+    if (!Array.isArray(args.days)) return null
+    for (const day of args.days) {
+      const value = typeof day === 'string' ? DAYS[day.trim().slice(0, 3).toLowerCase()] : undefined
+      if (value === undefined) return null
+      if (!days.includes(value)) days = [...days, value]
+    }
+    days.sort((a, b) => a - b)
+  }
+  return { hour, minute, label: textUpTo(args.label, 100), days }
+}
+
+/** A timer of 1 s to 24 h. */
+export function timerArgs(args: Record<string, unknown>): { seconds: number; label: string | null } | null {
+  const seconds = args.seconds
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null
+  const whole = Math.round(seconds)
+  if (whole < 1 || whole > 86_400) return null
+  return { seconds: whole, label: textUpTo(args.label, 100) }
+}
+
+export type RingerMode = 'normal' | 'vibrate' | 'silent'
+
+export function ringerArgs(args: Record<string, unknown>): RingerMode | null {
+  return args.mode === 'normal' || args.mode === 'vibrate' || args.mode === 'silent' ? args.mode : null
+}
+
+export function dndArgs(args: Record<string, unknown>): boolean | null {
+  return typeof args.on === 'boolean' ? args.on : null
+}
+
+/** A notification key the phone made (`n_…`). */
+export function keyArgs(args: Record<string, unknown>): string | null {
+  return textUpTo(args.key, 200)
+}
+
+export interface ReplyArgs {
+  key: string
+  conversationId: string | null
+  revision: number | null
+  text: string
+}
+
+export function replyArgs(args: Record<string, unknown>): ReplyArgs | null {
+  const key = keyArgs(args)
+  const body = textUpTo(args.text, MAX_MESSAGE_TEXT)
+  if (!key || !body) return null
+  const revision = typeof args.revision === 'number' && Number.isInteger(args.revision) && args.revision > 0 ? args.revision : null
+  return { key, conversationId: textUpTo(args.conversation_id, 200), revision, text: body }
+}
+
+export function openAppArgs(args: Record<string, unknown>): string | null {
+  return textUpTo(args.name, 100)
+}
+
+/** http(s) only: a link she has, opened by whichever app handles it (Discord, YouTube, a browser). */
+export function openLinkArgs(args: Record<string, unknown>): string | null {
+  const url = textUpTo(args.url, 2_000)
+  if (!url || !/^https?:\/\/[^\s/?#]+\.[^\s]*$/i.test(url)) return null
+  return url
+}
+
+export function playMusicArgs(args: Record<string, unknown>): string | null {
+  return textUpTo(args.query, 200)
+}
+
+export function draftArgs(args: Record<string, unknown>): { to: string | null; text: string } | null {
+  const body = textUpTo(args.text, MAX_MESSAGE_TEXT)
+  return body ? { to: textUpTo(args.to, 100), text: body } : null
 }

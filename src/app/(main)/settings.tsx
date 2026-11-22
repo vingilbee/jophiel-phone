@@ -3,7 +3,9 @@ import * as Application from 'expo-application'
 import { useRouter } from 'expo-router'
 import { Alert, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { actionsAvailable, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
+import { actionsAvailable, openDndSettings, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
+import { ACTION_GROUPS, type ActionGroup } from '@/actions/groups'
+import { notificationsAvailable, openNotificationAccessSettings } from '@/notifications'
 import { fetchCapabilities } from '@/api/auth'
 import { useSession } from '@/auth/session'
 import { useChat } from '@/chat/ChatProvider'
@@ -24,6 +26,18 @@ import {
 import { usePermissions, type Permissions } from '@/setup/usePermissions'
 import { updateSettings, useSettings } from '@/settings/store'
 import { space, useColors } from '@/theme'
+
+/** Settings → Her actions: one switch per group under the master switch (phase 8). */
+const ACTION_GROUP_TEXT: Record<ActionGroup, { title: string; on: string; off: string }> = {
+  media: { title: 'Media', on: 'Play, pause, skip, and media volume.', off: 'Off: she can’t control music or volume.' },
+  messages: {
+    title: 'Messages',
+    on: 'Replies through a notification’s reply button, and WhatsApp drafts you send yourself.',
+    off: 'Paused: no replies or drafts, even ones you ask for. She’s told they’re paused.',
+  },
+  alarms: { title: 'Alarms & timers', on: 'Sets them in the clock app (she can’t see or delete them afterwards).', off: 'Off: she can’t set alarms or timers.' },
+  opening: { title: 'Opening apps', on: 'Any app or link, and Spotify by song name, only while she’s talking with you.', off: 'Off: she can’t open apps, links or Spotify.' },
+}
 
 const PHASE_LABEL: Record<ConnectionPhase, string> = {
   connected: 'Connected',
@@ -110,7 +124,9 @@ export default function Settings() {
           title="Phone senses"
           supporting={(() => {
             const on = SENSE_GROUPS.filter((group) => settings.senses[group]).length
-            return on === SENSE_GROUPS.length ? 'All on: phone use, battery, headphones, network, sound, motion, places' : `${on} of ${SENSE_GROUPS.length} on`
+            return on === SENSE_GROUPS.length
+              ? 'All on: phone use, battery, headphones, network, sound, motion, places, notifications'
+              : `${on} of ${SENSE_GROUPS.length} on`
           })()}
           onPress={() => router.push('/senses')}
         />
@@ -120,12 +136,25 @@ export default function Settings() {
           title="Let Jophiel act on this phone"
           supporting={
             settings.actionsEnabled
-              ? 'She can start Google Maps navigation for you, and use your position once for a route or a nearby search. Each time leaves a line in the chat.'
-              : 'Off: she can’t open Maps or use your position. She’ll say so if she tries.'
+              ? 'Navigation, your position for one lookup, silent mode and Do Not Disturb, dismissing a notification, and the groups below. Each action leaves a line in the chat.'
+              : 'Off: she can’t do anything on this phone. She’ll say so if she tries.'
           }
           value={settings.actionsEnabled}
           onValueChange={(actionsEnabled) => updateSettings({ actionsEnabled })}
         />
+        {ACTION_GROUPS.map((group) => {
+          const on = settings.actionGroups[group]
+          return (
+            <SwitchRow
+              key={group}
+              title={ACTION_GROUP_TEXT[group].title}
+              supporting={on ? ACTION_GROUP_TEXT[group].on : ACTION_GROUP_TEXT[group].off}
+              value={on}
+              disabled={!settings.actionsEnabled}
+              onValueChange={(value) => updateSettings({ actionGroups: { ...settings.actionGroups, [group]: value } })}
+            />
+          )
+        })}
 
         <SectionHeader title="Account" />
         <ListRow icon="account-outline" title={user?.name ?? 'Signed in'} supporting={user?.email} />
@@ -220,6 +249,46 @@ export default function Settings() {
             onPress={() => openFullScreenIntentSettings()}
           />
         ) : null}
+        {notificationsAvailable ? (
+          <ListRow
+            icon={permissions.notificationAccess === 'granted' ? 'bell-ring-outline' : 'bell-off-outline'}
+            title="Notification access"
+            supporting={
+              permissions.notificationAccess === 'granted'
+                ? 'Allowed: notifications, replies, now playing, the Maps trip.'
+                : permissions.notificationAccess === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to allow it (Android 13+: allow restricted settings in App info first).'
+            }
+            onPress={() => openNotificationAccessSettings()}
+          />
+        ) : null}
+        {actionsAvailable ? (
+          <ListRow
+            icon="minus-circle-outline"
+            title="Do Not Disturb access"
+            supporting={
+              permissions.dndAccess === 'granted'
+                ? 'Allowed: she can switch silent mode and Do Not Disturb.'
+                : permissions.dndAccess === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to allow it (silent mode, Do Not Disturb).'
+            }
+            onPress={() => openDndSettings()}
+          />
+        ) : null}
+        <ListRow
+          icon={permissions.contacts === 'granted' ? 'account-multiple-outline' : 'account-off-outline'}
+          title="Contacts"
+          supporting={
+            permissions.contacts === 'granted'
+              ? 'Allowed: who’s a contact (never the number), WhatsApp drafts by name.'
+              : permissions.contacts === 'unknown'
+                ? 'Checking…'
+                : 'Off. Tap to allow it in Android (contacts vs strangers, drafts by name).'
+          }
+          onPress={() => void openAppSettings()}
+        />
         {permissions.battery ? (
           <ListRow
             icon="battery-heart-variant"
