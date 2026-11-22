@@ -326,7 +326,7 @@ every reconnect, re-run `adb reverse tcp:8000 tcp:8000 && adb reverse tcp:8081 t
 | Position with the app off screen, location "while using the app" | `refused: no_permission` — expected; works after "Allow all the time" (owner's choice, no code change) |
 | Pocket path (Samsung "Extend Unlock" = Smart Lock, earbuds trusted, screen off) | ✅ screen wakes, Maps opens by itself |
 | App swiped away, ask from the web app (push) | ✅ arrives by push, notification (app not on screen) |
-| Places → find an address | open |
+| Places → find an address | ✅ search, pick, save |
 | The two Setup steps | open |
 | A late push (`expired`) | open |
 | `resolve_saved_place` ("from work to …") | open (new build of the JS) |
