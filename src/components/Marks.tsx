@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Image, StyleSheet, View } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 import { useColors, useIsDark } from '@/theme'
@@ -20,7 +20,9 @@ export function Star({ size, color }: { size: number; color: string }) {
   )
 }
 
-/** Her picture: the ✦ glyph in terracotta on a warm disc. */
+const PICTURE = require('../../assets/jophiel-pfp.png')
+
+/** Her picture: the chibi portrait in a circle. `breathing`: a slow pulse while she's thinking. */
 export function JophielMark({ size = 32, breathing = false }: MarkProps & { breathing?: boolean }) {
   const colors = useColors()
   const reduceMotion = useReducedMotion()
@@ -34,9 +36,9 @@ export function JophielMark({ size = 32, breathing = false }: MarkProps & { brea
     pulse.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }), -1, true)
   }, [breathing, reduceMotion, pulse])
 
-  const glyphStyle = useAnimatedStyle(() => ({
-    opacity: 0.55 + 0.45 * (1 - pulse.value),
-    transform: [{ scale: 0.86 + 0.14 * (1 - pulse.value) }, { rotate: `${pulse.value * 45}deg` }],
+  const pictureStyle = useAnimatedStyle(() => ({
+    opacity: 1 - 0.35 * pulse.value,
+    transform: [{ scale: 1 - 0.08 * pulse.value }],
   }))
 
   return (
@@ -44,10 +46,10 @@ export function JophielMark({ size = 32, breathing = false }: MarkProps & { brea
       accessible
       accessibilityRole="image"
       accessibilityLabel="Jophiel"
-      style={[styles.disc, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.primaryContainer }]}
+      style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.primaryContainer }}
     >
-      <Animated.View style={glyphStyle}>
-        <Star size={size * 0.56} color={colors.primary} />
+      <Animated.View style={pictureStyle}>
+        <Image source={PICTURE} style={{ width: size, height: size, borderRadius: size / 2 }} />
       </Animated.View>
     </View>
   )
@@ -73,7 +75,3 @@ export function MeMark({ size = 32 }: MarkProps) {
     />
   )
 }
-
-const styles = StyleSheet.create({
-  disc: { alignItems: 'center', justifyContent: 'center' },
-})

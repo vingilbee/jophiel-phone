@@ -21,8 +21,9 @@ Material 3 role names; components never use raw hex. Light and dark follow the s
 | onPrimaryContainerVariant | `#7A4A35` | `#E0B7A4` | time and 🕓 / ✓ on your bubbles |
 | warnContainer / onWarnContainer | `#EFE0C4` / `#3D2E12` | `#3F3420` / `#F3E3C2` | "Can't reach Jophiel" banner, setup problems |
 
-Brand surfaces outside the UI (launcher icon, splash, notification accent) use the original
-terracotta `#B8572F`; it isn't used for text. Every text pair meets 4.5:1 and the ✓✓ icon 3:1 in both
+The launcher icon is her chibi art (`assets/icon.png`; the adaptive layers fit the whole figure inside
+Android's mask over a sky gradient taken from the art's edges). The splash and notification accent use
+the original terracotta `#B8572F`; it isn't used for text. Every text pair meets 4.5:1 and the ✓✓ icon 3:1 in both
 themes (checked with a script over the token pairs).
 
 ## Type
@@ -41,8 +42,7 @@ sizes are sp and scale with the system font size. Monospace only for code in her
 
 ## Components
 
-- **Marks:** hers is the ✦ drawn as a vector (same path as the app icon) in primary on a
-  primaryContainer disc; yours is a plain black circle (hairline outline in dark mode).
+- **Marks:** hers is her chibi portrait (`assets/jophiel-pfp.png`) in a circle; yours is a plain black circle (hairline outline in dark mode).
   Shown on the first bubble of each run.
 - **Bubble:** hers left, yours right; Markdown in hers (bold, italics, lists, links, code); time
   in the corner, ticks after it on yours; "waited 9 h on the phone" when a queued message arrived
@@ -58,7 +58,7 @@ sizes are sp and scale with the system font size. Monospace only for code in her
 
 ## Signature details
 
-1. Her ✦ **breathes** (slow scale/fade/turn) in the app bar and in the thread while she's thinking
+1. Her picture **breathes** (slow scale/fade) in the app bar and in the thread while she's thinking
    about your message. Static when the system's Remove animations is on.
 2. Your **✓✓ turn terracotta** when she picks a message up; 🕓 and ✓ stay quiet.
 
