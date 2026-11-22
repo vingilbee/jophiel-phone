@@ -73,6 +73,11 @@ internal class Media(private val context: Context, private val component: Compon
     controllers = emptyList()
   }
 
+  /** Switched off: what was sent is forgotten, so switching on again sends it anew. */
+  fun forget() {
+    last = null
+  }
+
   /** Forget what was sent (switched off and on again): the next change, or `resend`, sends it. */
   fun resend() {
     last = null
@@ -124,11 +129,12 @@ internal class Media(private val context: Context, private val component: Compon
 
   private fun changed() {
     if (!started) return
+    if (!Store.enabled(context)) return
     val now = nowPlaying()
     val text = now?.toString()
     if (text == last) return
     last = text
-    if (Store.enabled(context)) Fields.report(context, "media", now)
+    Fields.report(context, "media", now)
   }
 
   /**

@@ -54,20 +54,36 @@ internal object Outbox {
     val app = context.applicationContext
     val body = frame(posted, removed, allRemoved).toString()
     Store.markSentAt(app, System.currentTimeMillis())
+    // While a batch still waits in the background chain, later ones join it rather than overtaking
+    // it on the socket (a removal or clear arriving before the post it undoes).
     val sink = liveSink
-    if (sink != null) {
+    if (sink != null && !hasQueued(app)) {
       sink(body)
       return
     }
     queue(app, body)
   }
 
+  /**
+   * The sense was switched off: one "all removed", so the backend forgets everything this phone
+   * told it. Queued posts still go first (the chain keeps order), then the clear undoes them.
+   */
+  fun clearAll(context: Context) {
+    Store.setSentKeys(context.applicationContext, emptySet())
+    send(context, emptyList(), emptyList(), allRemoved = true)
+  }
+
+  private fun dir(app: Context) = File(app.noBackupFilesDir, "notifications")
+
+  /** A batch file exists from `queue` until its worker is done with it. */
+  private fun hasQueued(app: Context): Boolean = dir(app).listFiles()?.isNotEmpty() == true
+
   /** Queue a POST (no JS, or JS had no socket). Not signed in → nothing is sent. */
   fun queue(context: Context, body: String) {
     val app = context.applicationContext
     if (!Store.hasCredentials(app)) return
     // Input data is capped at 10 KB; a batch can be bigger, so it waits in a file.
-    val dir = File(app.noBackupFilesDir, "notifications").apply { mkdirs() }
+    val dir = dir(app).apply { mkdirs() }
     val file = File(dir, "${UUID.randomUUID()}.json")
     try {
       file.writeText(body)
@@ -102,7 +118,7 @@ internal object Outbox {
     } catch (e: Exception) {
       Log.w(TAG, "batches not cancelled", e)
     }
-    File(app.noBackupFilesDir, "notifications").listFiles()?.forEach { it.delete() }
+    dir(app).listFiles()?.forEach { it.delete() }
   }
 
   /** The socket frame; the POST sends the same without `type`. */

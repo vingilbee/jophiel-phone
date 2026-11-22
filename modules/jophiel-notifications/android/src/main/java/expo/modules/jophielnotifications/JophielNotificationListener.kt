@@ -68,11 +68,10 @@ class JophielNotificationListener : NotificationListenerService() {
   override fun onListenerConnected() {
     instance = this
     worker.post {
-      media = Media(this, component(this), worker)
-      if (Store.enabled(this)) {
-        media?.start()
-        resync()
-      }
+      // Tracked whatever the sense switch says: her media controls need the sessions. Only
+      // reporting now playing follows the switch (Media.changed).
+      media = Media(this, component(this), worker).also { it.start() }
+      if (Store.enabled(this)) resync()
     }
   }
 
@@ -103,18 +102,16 @@ class JophielNotificationListener : NotificationListenerService() {
   internal fun setEnabled(on: Boolean) {
     worker.post {
       if (on) {
-        media?.start()
         media?.resend()
         resync()
       } else {
-        media?.stop()
         coalescer.clear()
+        worker.removeCallbacks(flush)
         live.clear()
         navigation = null
         navigationKey = null
-        // One "all removed": the backend forgets everything this phone told it.
-        Store.setSentKeys(this, emptySet())
-        Outbox.send(this, emptyList(), emptyList(), allRemoved = true)
+        media?.forget()
+        Outbox.clearAll(this)
       }
     }
   }

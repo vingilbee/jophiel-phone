@@ -56,8 +56,11 @@ class JophielNotificationsModule : Module() {
       val listener = JophielNotificationListener.instance
       if (listener != null) {
         if (wasEnabled != enabled) listener.setEnabled(enabled)
-      } else if (hasAccess(ctx)) {
-        runCatching { NotificationListenerService.requestRebind(JophielNotificationListener.component(ctx)) }
+      } else {
+        // Not bound (no access, or Samsung killed it): the clear can't wait for a listener that
+        // may never come back. Switching on again resyncs once it binds.
+        if (wasEnabled && !enabled) Outbox.clearAll(ctx)
+        if (hasAccess(ctx)) runCatching { NotificationListenerService.requestRebind(JophielNotificationListener.component(ctx)) }
       }
     }
 
