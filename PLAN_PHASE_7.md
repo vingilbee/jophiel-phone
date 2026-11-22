@@ -324,7 +324,7 @@ every reconnect, re-run `adb reverse tcp:8000 tcp:8000 && adb reverse tcp:8081 t
 | Navigate, locked with a PIN | ✅ notification (`locked`) |
 | Navigate, another app on screen (during a call) | ✅ notification (`background`, Android 15 as expected) |
 | Position with the app off screen, location "while using the app" | `refused: no_permission` — expected; works after "Allow all the time" (owner's choice, no code change) |
-| Pocket path (Smart Lock, screen off) | open |
+| Pocket path (Samsung "Extend Unlock" = Smart Lock, earbuds trusted, screen off) | ✅ screen wakes, Maps opens by itself |
 | App swiped away, ask from the web app (push) | ✅ arrives by push, notification (app not on screen) |
 | Places → find an address | open |
 | The two Setup steps | open |
@@ -333,6 +333,11 @@ every reconnect, re-run `adb reverse tcp:8000 tcp:8000 && adb reverse tcp:8081 t
 
 Seen: when location was refused she first said she couldn't get it, then, asked, said it worked a
 moment earlier: correct, the earlier lookups ran while Jophiel was on screen.
+
+**For the backend agent**: with the app swiped away (action by push), the backend wrote "Maps action
+sent, no answer yet…" and, 10 ms later, the phone's real answer ("sent a notification"): its wait
+ended just before a push-woken phone answered. Suggest a longer wait when the action went by push,
+and/or replacing the "no answer yet" line when the answer comes late.
 
 Not phase 7: following the trip turn by turn. Maps doesn't share its navigation; she knows only the
 route summary. Candidate for phase 8: read Maps' navigation notification once notification access
