@@ -42,12 +42,22 @@ export function reservedPlaceName(name: string): boolean {
   return name.toLowerCase() === AWAY
 }
 
+/**
+ * A name an older version let a place have, as it's kept now: "away" (any case) becomes
+ * "away (place)", so entering it is never heard as leaving every place. The same rule runs natively
+ * (PlaceLogic.wireName) for a wake-up before the app has started after an upgrade.
+ */
+export function unreservedName(name: string): string {
+  return reservedPlaceName(name) ? `${name} (place)` : name
+}
+
 /** A stored place, or null if it isn't one (storage from another version, hand edits). */
 export function checkPlace(raw: unknown): Place | null {
   if (!raw || typeof raw !== 'object') return null
   const p = raw as Record<string, unknown>
   if (typeof p.id !== 'string' || p.id === '' || typeof p.name !== 'string') return null
-  const name = placeName(p.name)
+  const named = placeName(p.name)
+  const name = named && unreservedName(named)
   const { latitude, longitude, radius } = p
   if (!name || typeof latitude !== 'number' || typeof longitude !== 'number' || typeof radius !== 'number') return null
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null

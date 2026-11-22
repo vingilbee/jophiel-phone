@@ -47,5 +47,11 @@ object PlaceLogic {
 
   /** The place to report: the smallest circle you're inside (first saved wins a tie), or [AWAY]. */
   fun resolve(inside: Set<String>, places: List<Place>): String =
-    places.filter { it.id in inside }.minByOrNull { it.radius }?.name ?: AWAY
+    places.filter { it.id in inside }.minByOrNull { it.radius }?.name?.let(::wireName) ?: AWAY
+
+  /**
+   * A place's name as sent: one an older version let be "away" (any case) goes as "away (place)",
+   * never as a departure (the same rule as src/senses/places.ts unreservedName).
+   */
+  fun wireName(name: String): String = if (name.equals(AWAY, ignoreCase = true)) "$name (place)" else name
 }

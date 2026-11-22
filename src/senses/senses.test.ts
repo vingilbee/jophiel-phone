@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import { PhoneSenses, type SensesLink, type SensesNative } from './controller'
 import { agoLabel, describeGroup, type LastReported } from './describe'
 import { defaultSwitches, groupOf, switchedOff, type SenseSwitches } from './groups'
-import { AWAY, checkPlaces, placeName, radiusLabel, reservedPlaceName } from './places'
+import { AWAY, checkPlaces, placeName, radiusLabel, reservedPlaceName, unreservedName } from './places'
 import { changes, checkFields, checkValue, clip, effective } from './report'
 
 // The settings store persists with AsyncStorage and reads expo-device: stand-ins, so migrate loads under bun.
@@ -353,6 +353,10 @@ describe('places', () => {
     expect(reservedPlaceName('Away')).toBe(true)
     expect(reservedPlaceName('away from home')).toBe(false)
     expect(AWAY).toBe('away')
+    expect(unreservedName('home')).toBe('home')
+    // A place an older version saved as "away" loads renamed, so entering it is never heard as leaving.
+    const [legacy] = checkPlaces([{ id: 'p1', name: 'Away', latitude: 1, longitude: 2, radius: 100 }])
+    expect(legacy?.name).toBe('Away (place)')
     expect(placeName('a'.repeat(70))).toHaveLength(60)
   })
 

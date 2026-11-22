@@ -66,6 +66,13 @@ class PlaceLogicTest {
   }
 
   @Test
+  fun aPlaceAnOlderVersionNamedAwayIsNeverADeparture() {
+    val legacy = listOf(Place("x", "Away", 0.0, 0.0, 100.0))
+    assertEquals("Away (place)", PlaceLogic.resolve(setOf("x"), legacy))
+    assertEquals("away from home", PlaceLogic.wireName("away from home"))
+  }
+
+  @Test
   fun deletedPlacesArePrunedFromTheInsideSet() {
     val pruned = PlaceLogic.prune(setOf("h", "gone"), places)
     assertEquals(setOf("h"), pruned)
