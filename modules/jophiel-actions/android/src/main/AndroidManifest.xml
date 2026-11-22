@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Phase 7: actions she sends to the phone (open Google Maps navigating). -->
+  <!-- "Display over other apps": lets her open Maps while another app is on screen (Android 14). -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <!-- Wakes the screen to start navigation with the phone in your pocket (no PIN needed). -->
+  <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+  <!-- Android 11 package visibility: is Google Maps installed? -->
+  <queries>
+    <package android:name="com.google.android.apps.maps" />
+  </queries>
+
+  <application>
+    <!--
+      Started only by a full-screen-intent notification: shows over the lock screen, turns the
+      screen on, dismisses a swipe (or Smart Lock) keyguard, opens Maps and finishes.
+    -->
+    <activity
+      android:name="expo.modules.jophielactions.WakeActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:taskAffinity=""
+      android:launchMode="singleInstance"
+      android:showWhenLocked="true"
+      android:turnScreenOn="true"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+  </application>
+</manifest>

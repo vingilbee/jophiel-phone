@@ -69,7 +69,8 @@ export async function clearPresentedNotifications() {
 export async function handlePush(push: PushData | null) {
   if (!push) return
   if (push.type === 'clear') await clearPresentedNotifications()
-  else await showMessage(push)
+  else if (push.type === 'message') await showMessage(push)
+  // phone_action pushes are src/actions' (background.ts, registration.ts), never a notification.
 }
 
 /** The message a notification tap should open, if this event is a tap. */

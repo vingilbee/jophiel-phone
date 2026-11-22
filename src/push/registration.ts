@@ -1,5 +1,6 @@
 import * as Device from 'expo-device'
 import { AppState } from 'react-native'
+import { dispatchAction } from '@/actions'
 import { deleteDevice, registerDevice } from '@/api/phone'
 import { notificationPermission } from '@/setup/permissions'
 import { pushEnabled } from './config'
@@ -49,6 +50,8 @@ export function startPush(): () => void {
     const push = parsePushData(message.data)
     // On screen, the chat already shows her message; only act on "clear".
     if (push?.type === 'clear') await handlePush(push)
+    // Phase 7: an action pushed while the app is open but its socket was down (a repeat is ignored).
+    else if (push?.type === 'phone_action') await dispatchAction(push.action)
   })
   return () => {
     appState.remove()

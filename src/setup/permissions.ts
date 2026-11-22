@@ -3,6 +3,7 @@ import * as Battery from 'expo-battery'
 import * as Device from 'expo-device'
 import * as IntentLauncher from 'expo-intent-launcher'
 import { Linking, PermissionsAndroid, Platform } from 'react-native'
+import { canDrawOverlays, canUseFullScreenIntent } from '@/actions'
 
 /** Every state here is read from Android each time, never remembered. */
 export type PermissionState = 'granted' | 'denied' | 'blocked' | 'unknown'
@@ -185,4 +186,22 @@ export async function requestNearbyPermission(): Promise<PermissionState> {
   } catch {
     return 'unknown'
   }
+}
+
+// ---- Phase 7: her actions ----
+
+/** Full-screen notifications are their own permission from Android 14 (granted below). */
+export const hasFullScreenPermission = sdk >= 34
+
+/** "Display over other apps": she can open Maps while another app is on screen. */
+export function overlayPermission(): PermissionState {
+  const allowed = canDrawOverlays()
+  return allowed === null ? 'unknown' : allowed ? 'granted' : 'denied'
+}
+
+/** Full-screen notifications: she can wake the screen to start navigation (Android 14+). */
+export function fullScreenPermission(): PermissionState {
+  if (!hasFullScreenPermission) return 'granted'
+  const allowed = canUseFullScreenIntent()
+  return allowed === null ? 'unknown' : allowed ? 'granted' : 'denied'
 }

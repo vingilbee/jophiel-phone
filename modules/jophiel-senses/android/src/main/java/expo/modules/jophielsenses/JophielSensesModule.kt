@@ -93,6 +93,27 @@ class JophielSensesModule : Module() {
       }
     }
 
+    /**
+     * Phase 7: one position for one of her lookups, or why not. Coordinates go to JS only to be
+     * sent in that lookup's `get_position` result; never stored or logged.
+     */
+    AsyncFunction("positionOnce") { promise: Promise ->
+      Senses.positionOnce(context) { location, error ->
+        promise.resolve(
+          if (location != null) {
+            mapOf(
+              "latitude" to location.latitude,
+              "longitude" to location.longitude,
+              "accuracy" to location.accuracy.toDouble(),
+              "fixAt" to location.time.toDouble(),
+            )
+          } else {
+            mapOf("error" to (error ?: "no_fix"))
+          },
+        )
+      }
+    }
+
     /** Which place you're at now, from one fix. Resolves true when it could tell. */
     AsyncFunction("checkPlaceNow") { promise: Promise ->
       Senses.checkPlaceNow(context) { promise.resolve(it) }

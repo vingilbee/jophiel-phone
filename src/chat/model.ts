@@ -30,6 +30,8 @@ export interface ChatItem {
    * said aloud, and shows faded. Null when you heard it all (or it wasn't spoken).
    */
   heardChars: number | null
+  /** Phase 7: a quiet activity line ("Opened Maps → …", "Used your location once"), not a bubble. */
+  activity: boolean
 }
 
 /** A message written on the phone and not yet saved by the backend. Persisted. */
@@ -106,7 +108,7 @@ export function arrivedLate(writtenAt: string | null | undefined, savedAt: strin
 }
 
 export function fromStored(message: StoredMessage, seenIds: ReadonlySet<string> = new Set()): ChatItem {
-  const isUser = message.role === 'user'
+  const isUser = message.role === 'user' && message.kind !== 'phone_activity'
   const createdAt = serverTime(message.created_at)
   const writtenAt = message.written_at ? serverTime(message.written_at) : null
   const at = (isUser && writtenAt) || createdAt
@@ -125,6 +127,7 @@ export function fromStored(message: StoredMessage, seenIds: ReadonlySet<string> 
     imageIds: message.image_ids ?? [],
     assetIds: message.asset_ids ?? [],
     heardChars: storedHeard(message),
+    activity: message.kind === 'phone_activity',
   }
 }
 
@@ -150,6 +153,7 @@ function liveItem(key: string, now: string, fields: Partial<ChatItem> = {}): Cha
     imageIds: [],
     assetIds: [],
     heardChars: null,
+    activity: false,
     ...fields,
   }
 }
@@ -202,7 +206,9 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
       // Read from the raw snapshot, before silent replies are filtered out: a turn she answered with
       // silence (or that failed) is settled too.
       const answeredTurns = new Set(
-        frame.messages.filter((m) => m.role === 'assistant' && m.turn_id).map((m) => m.turn_id as string),
+        frame.messages
+          .filter((m) => m.role === 'assistant' && m.kind !== 'phone_activity' && m.turn_id)
+          .map((m) => m.turn_id as string),
       )
       const activeTurns = state.activeTurns.filter((turn) => !answeredTurns.has(turn))
       return {
@@ -259,6 +265,7 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
         imageIds: [],
         assetIds: [],
         heardChars: null,
+        activity: false,
       }
       return { ...next, messages: [...next.messages, item] }
     }
@@ -288,6 +295,7 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
         imageIds: [],
         assetIds: [],
         heardChars: null,
+        activity: false,
       }
       return { ...next, messages: [...next.messages, item] }
     }
@@ -334,6 +342,30 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
         activeTurns: frame.turn_id ? settled.activeTurns.filter((t) => t !== frame.turn_id) : [],
         unconfirmedTurns: frame.turn_id ? settled.unconfirmedTurns.filter((t) => t !== frame.turn_id) : [],
       }
+    }
+
+    case 'phone_activity': {
+      if (state.messages.some((m) => m.id === frame.message_id) || !frame.text.trim()) return state
+      // Another conversation's line (the phone shows the primary one only).
+      if (frame.conversation_id && state.conversationId && frame.conversation_id !== state.conversationId) return state
+      const item: ChatItem = {
+        key: `m:${frame.message_id}`,
+        id: frame.message_id,
+        turnId: null,
+        role: 'assistant',
+        text: frame.text,
+        at: serverTime(frame.created_at),
+        arrivedAt: null,
+        tick: null,
+        status: 'completed',
+        streaming: false,
+        unprompted: false,
+        imageIds: [],
+        assetIds: [],
+        heardChars: null,
+        activity: true,
+      }
+      return { ...state, messages: [...state.messages, item] }
     }
 
     case 'nudge_start': {
@@ -444,6 +476,7 @@ function queuedItem(queued: QueuedMessage): ChatItem {
     imageIds: [],
     assetIds: [],
     heardChars: null,
+    activity: false,
   }
 }
 

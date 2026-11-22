@@ -254,3 +254,60 @@ per mode.
 16. Places: add by address with a Search button (no as-you-type).
 17. Once Maps navigates, phase 7 is done with it: no arrival tracking (phase 6 senses cover saved
     places); she can start a new trip but not stop or change one.
+
+## Implementation notes (phone half, 2026-11-21)
+
+Steps 7.1–7.5 are built on the phone side, against the contract above. The backend (7.0) doesn't exist
+yet, so nothing has run end to end; the developer screen's "Phone actions" tests run the phone half
+without it. 7.6 (S21 pass) is still open.
+
+**Where it lives**
+- `modules/jophiel-actions` (Kotlin): `MapsLogic.choose` is the table above as a pure function
+  (JUnit: `cd android && ./gradlew :jophiel-actions:testDebugUnitTest`, 10 cases); `Maps.kt` opens Maps
+  or posts the notification (channel "Actions", id 7001, one at a time, gone after 10 min or when Maps
+  opens; lock screen shows "Tap to start navigation" without the destination); `WakeActivity` is the
+  pocket path. The full-screen-intent notification *is* the fallback notification: if the wake doesn't
+  answer within 6 s, or the keyguard won't go, it stays, and a late WakeActivity leaves Maps closed.
+- `jophiel-senses` gained `positionOnce()`: one `getCurrentLocation` with max age 2 min and a 10 s
+  limit. Needs precise location, plus "Allow all the time" unless an activity of ours is in front.
+- `src/actions/`: `protocol.ts` (parse frame / push, expiry, args), `maps.ts` (intent URLs per mode),
+  `run.ts` (checks, run, answer once; `bun test`), `index.ts` (wiring: each id once, also across app
+  restarts (last 50 kept); results over the socket, else `POST` with 1/2/4/8/15 s backoff while the
+  action lives; no retry on a 4xx).
+
+**Changed from the plan**
+- The master switch is not mirrored natively: a push-started app reads its settings with one
+  AsyncStorage read (`loadSettings()`) before the checks, which it needs anyway for the Places group.
+- "Her app on screen" is read natively (process importance), not passed from JS, so it's right in a
+  headless push run and during a background call.
+
+**Reasons the phone sends** (for the backend agent; her mind may read them)
+
+| status | reason | when |
+|---|---|---|
+| `notified` | `locked` | PIN needed: notification, no wake |
+| `notified` | `background` | another app on screen, no "Display over other apps" (or Android 15 without the chibi) |
+| `notified` | `no_full_screen` | screen off / lock screen, full-screen notifications not allowed |
+| `notified` | `keyguard` | woke the screen but Android kept the lock screen (e.g. Smart Lock not trusted) |
+| `notified` | `no_wake` | the full-screen notification didn't start the wake screen within 6 s |
+| `notified` | `open_failed` | Android refused to open Maps |
+| `failed` | `maps_missing` / `notifications_off` / `bad_args` / `unknown_action` / `not_supported` (old build) / `error` | as named |
+| `refused` | `switched_off` | "Let Jophiel act on this phone" is off (any action) |
+| `refused` | `places_off` | `get_position` with the phase 6 Places group off |
+| `refused` | `no_permission` / `location_off` | `get_position`: no precise location (or no "all the time" with the app closed) / location off on the phone |
+| `failed` | `no_fix` | `get_position`: no fix within 10 s |
+| `expired` | — | arrived after `expires_at` |
+
+**What the phone expects from the backend (beyond the contract above)**
+- `navigate_to` args may carry `place_id` (used in the URL fallback).
+- `POST /api/phone/actions/{id}/result` body: `{ status, reason?, data? }`.
+- Activity lines: frame `{ type: "phone_activity", conversation_id, message_id, text, created_at }`;
+  in `history`, stored messages with `kind: "phone_activity"` (`content` is the text). They break
+  bubble runs and never settle a turn.
+- Place search: a list (or `{ results: [...] }`) of `{ name, address, lat, lng }`. A 404 reads
+  "the server doesn't offer place search yet", a 503 "unavailable right now".
+
+**Device checks still open (7.6)**: everything in the table on the S21 (Smart Lock + earphones,
+PIN, another app on screen, swiped away, position with the app closed, a late push), and whether a
+background start with "Display over other apps" really opens Maps on One UI (Android drops a
+refused start silently, so the phone would answer `done` without Maps opening).

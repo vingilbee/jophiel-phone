@@ -23,6 +23,8 @@ export interface PhoneSettings {
   senses: SenseSwitches
   /** Phase 6: named places, on the phone only (coordinates never leave it). Kept on logout. */
   places: Place[]
+  /** Phase 7: "Let Jophiel act on this phone" (open Maps, give her position for one lookup). Kept on logout. */
+  actionsEnabled: boolean
 }
 
 const KEY = 'jophiel.settings'
@@ -37,6 +39,7 @@ export function defaults(): PhoneSettings {
     batteryPromptShown: false,
     senses: defaultSwitches(),
     places: [],
+    actionsEnabled: true,
   }
 }
 

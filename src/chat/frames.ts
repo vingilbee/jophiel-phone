@@ -1,3 +1,5 @@
+import type { PhoneActionResultFrame } from '@/actions/protocol'
+
 /**
  * Chat WebSocket frames: the one hand-written copy of the protocol on the phone.
  * Source of truth: the header of ../app/backend/app/api/routes/chat.py (reference client:
@@ -21,6 +23,11 @@ export interface StoredMessage {
   asset_ids?: string[] | null
   /** Interrupted voice replies: characters of `content` the user heard. */
   heard_chars?: number | null
+  /**
+   * Phase 7: `phone_activity` is a quiet line in the conversation ("Opened Maps → Kemang Village",
+   * "Used your location once"), not a message bubble. Absent: a message.
+   */
+  kind?: 'message' | 'phone_activity' | null
 }
 
 /**
@@ -67,11 +74,22 @@ export type ServerFrame =
   | { type: 'audio_segment'; turn_id?: string; segment: number; text_start: number; text_end: number }
   | { type: 'audio_end'; turn_id?: string }
   | { type: 'barge_resolved'; turn_id: string; action: BargeAction }
+  /** Phase 7: an action for this phone (see src/actions/protocol.ts). Never reaches the chat model. */
+  | {
+      type: 'phone_action'
+      action_id: string
+      action: string
+      args?: Record<string, unknown> | null
+      expires_at?: string
+    }
+  /** Phase 7: a quiet line in the chat for an action she took or a position she used. */
+  | { type: 'phone_activity'; conversation_id?: string | null; message_id: string; text: string; created_at: string }
 
 const HANDLED = new Set([
   'meta', 'history', 'ack', 'seen', 'token', 'sticker', 'nudge_start', 'nudge_token', 'nudge_sticker',
   'nudge_end', 'reply_interrupted', 'state', 'done', 'stopped', 'error',
   'transcript', 'audio_start', 'audio_segment', 'audio_end', 'barge_resolved',
+  'phone_action', 'phone_activity',
 ])
 
 /** Parse a text frame; frames the phone doesn't handle (thought, subagent…) give null. */
@@ -180,6 +198,7 @@ export type ClientFrame =
   | RunFrame
   | SenseFrame
   | VoiceFrame
+  | PhoneActionResultFrame
   | { type: 'stop'; conversation_id: string | null; turn_id?: string | null }
 
 /**

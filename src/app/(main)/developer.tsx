@@ -3,6 +3,8 @@ import { Redirect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { runLocalAction } from '@/actions'
+import type { ActionResult } from '@/actions/protocol'
 import { AppText } from '@/components/AppText'
 import { Button, IconButton, SectionHeader, SwitchRow } from '@/components/Controls'
 import { Snackbar } from '@/components/Snackbar'
@@ -298,12 +300,66 @@ function DeveloperScreen() {
         <Stepper label="No-connection limit (ms)" field="backgroundOfflineMs" step={15_000} digits={0} min={15_000} tuning={tuning} />
         <ClockTest />
 
+        <SectionHeader title="Phone actions" />
+        <ActionsTest onResult={setSnack} />
+
         <View style={[styles.buttons, styles.footer]}>
           <Button label="Reset" variant="text" icon="restore" onPress={() => resetTuning()} />
           <Button label="Copy" variant="tonal" icon="content-copy" onPress={copy} />
         </View>
       </ScrollView>
       <Snackbar message={snack} onDismiss={() => setSnack(null)} />
+    </View>
+  )
+}
+
+/** A known destination for the test: Monas, Central Jakarta. */
+const TEST_DESTINATION = { name: 'Monas', lat: -6.1754, lng: 106.8272, mode: 'drive' }
+/** Long enough to lock the phone or switch to another app first. */
+const DELAYED_MS = 10_000
+
+function resultText(result: ActionResult | null): string {
+  if (!result) return 'Already handled'
+  const accuracy = result.data ? ` (position to ±${result.data.accuracy_m} m, not shown)` : ''
+  return `${result.status}${result.reason ? `: ${result.reason}` : ''}${accuracy}`
+}
+
+/**
+ * Phase 7: run her actions here, as if she had sent them (nothing is answered to the server). The
+ * delayed one gives time to lock the phone, put it in a pocket or open another app.
+ */
+function ActionsTest({ onResult }: { onResult: (text: string) => void }) {
+  const [pending, setPending] = useState<string | null>(null)
+  const timer = useRef<TimerHandle | null>(null)
+  useEffect(() => () => clearNativeTimeout(timer.current), [])
+
+  const run = (label: string, action: string, args: Record<string, unknown>, delayMs = 0) => {
+    setPending(label)
+    const go = () =>
+      void runLocalAction(action, args).then((result) => {
+        setPending(null)
+        onResult(`${label}: ${resultText(result)}`)
+      })
+    if (delayMs) timer.current = setNativeTimeout(go, delayMs)
+    else go()
+  }
+
+  return (
+    <View style={styles.block}>
+      <AppText role="bodyMedium" color="onSurfaceVariant">
+        {pending ? `Running ${pending}…` : 'Runs on this phone only; the server hears nothing.'}
+      </AppText>
+      <View style={styles.buttons}>
+        <Button label="Navigate to Monas" variant="tonal" icon="navigation-variant-outline" disabled={pending !== null} onPress={() => run('navigate_to', 'navigate_to', TEST_DESTINATION)} />
+        <Button
+          label="Navigate in 10 s"
+          variant="tonal"
+          icon="timer-outline"
+          disabled={pending !== null}
+          onPress={() => run('navigate_to in 10 s', 'navigate_to', TEST_DESTINATION, DELAYED_MS)}
+        />
+        <Button label="Get position" variant="tonal" icon="crosshairs-gps" disabled={pending !== null} onPress={() => run('get_position', 'get_position', {})} />
+      </View>
     </View>
   )
 }

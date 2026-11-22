@@ -23,6 +23,8 @@ export interface ConnectionEvents {
   onReadyChange: (ready: boolean) => void
   /** A voice reply was cut off: settle its bubble now. */
   onSettleTurn: (turnId: string) => void
+  /** Phase 7: she sent this phone an action. */
+  onPhoneAction: (frame: Extract<ServerFrame, { type: 'phone_action' }>) => void
 }
 
 export interface ConnectionSource {
@@ -206,6 +208,10 @@ export class ChatConnection {
       }
       const frame = parseFrame(event.data)
       if (!frame) return
+      if (frame.type === 'phone_action') {
+        this.events.onPhoneAction(frame)
+        return
+      }
       if (frame.type === 'history') {
         this.historyReceived = true
         // Dispatched first, so voice reads the snapshot's conversation id once it's told it's ready.

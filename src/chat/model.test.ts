@@ -289,3 +289,39 @@ describe('server times without a time zone are UTC', () => {
     expect(Date.parse(s.messages[1]!.at) - Date.parse(s.messages[0]!.at)).toBe(60_000)
   })
 })
+
+describe('phone activity lines (phase 7)', () => {
+  const line: ServerFrame = {
+    type: 'phone_activity',
+    conversation_id: 'c1',
+    message_id: 'p1',
+    text: 'Opened Maps → Kemang Village',
+    created_at: '2026-11-20T09:30:00',
+  }
+
+  test('a frame adds a quiet line once, in UTC', () => {
+    let s = run(initialChatState, { type: 'history', conversation_id: 'c1', messages: [] }, line, line)
+    const items = visibleItems(s)
+    expect(items.map((i) => [i.id, i.activity, i.text, i.at])).toEqual([['p1', true, 'Opened Maps → Kemang Village', '2026-11-20T09:30:00Z']])
+    s = run(s, { ...line, message_id: 'p2', conversation_id: 'other' })
+    expect(visibleItems(s)).toHaveLength(1)
+  })
+
+  test('history entries of kind phone_activity are lines and do not settle a turn', () => {
+    let s = enqueue(initialChatState, 't1')
+    s = run(s, { type: 'ack', turn_id: 't1', user_message_id: 'm1', conversation_id: 'c1' })
+    s = run(s, {
+      type: 'history',
+      conversation_id: 'c1',
+      messages: [
+        stored({ id: 'm1', role: 'user', content: 'take me to Kemang', turn_id: 't1' }),
+        stored({ id: 'p1', role: 'assistant', content: 'Used your location once', turn_id: 't1', kind: 'phone_activity' }),
+      ],
+    })
+    expect(visibleItems(s).map((i) => [i.id, i.activity, i.tick])).toEqual([
+      ['m1', false, 'saved'],
+      ['p1', true, null],
+    ])
+    expect(s.activeTurns).toEqual(['t1'])
+  })
+})
