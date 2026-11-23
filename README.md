@@ -63,6 +63,27 @@ An older build still runs; the call button just stays hidden (no audio module).
   live VAD tuning and the echo fallbacks. Tuning is saved on the phone; **Copy** puts it on the
   clipboard as JSON.
 
+## Release build (real phone over Tailscale)
+
+The dev build needs Metro on the Mac; the release build carries its own JS and talks to the backend
+over HTTPS only, i.e. through Tailscale (`tailscale serve --bg 8000` on the Mac, then log in with
+`https://<mac>.<tailnet>.ts.net`).
+
+Release builds are signed with Jophiel's own key, kept outside the repo in `~/.jophiel-release/`
+(`jophiel-release.jks` + `keystore.properties`; `plugins/withReleaseSigning.js` reads it at build time).
+**Back that folder up**: without it the installed app can't be updated. Without the folder, release
+builds fail instead of signing with the debug key.
+
+```sh
+bunx expo prebuild --platform android
+cd android && ./gradlew assembleRelease      # needs ANDROID_HOME (see above)
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+Debug and release builds have different keys: switching between them on the phone means
+uninstalling first (local settings and login are lost; chats live on the backend). R8 shrinking is
+off (it stripped WorkManager's constructor and crashed the app on launch).
+
 ## Scripts
 
 | | |
@@ -93,5 +114,5 @@ src/notifications/  notification frames over the socket while live
 src/senses/         phone senses controller (sense frames), groups, places
 src/components/     UI building blocks
 src/theme/          palette + type tokens
-plugins/            config plugin: notification status-bar icon
+plugins/            config plugins: notification status-bar icon, release signing
 ```
