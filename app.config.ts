@@ -32,10 +32,13 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-secure-store',
     './plugins/withNotificationIcon',
+    './plugins/withReleaseSigning',
     ['expo-splash-screen', { image: './assets/splash-icon.png', imageWidth: 160, backgroundColor: '#B8572F' }],
     // Plain HTTP (http://10.0.2.2:8000) works only in debug builds: the debug manifest that prebuild
     // generates allows cleartext; release builds keep Android's default (HTTPS only).
-    ['expo-build-properties', { android: { minSdkVersion: 26 } }],
+    // No R8 shrinking in release: it stripped WorkManager's Room constructor (crash on launch), and the
+    // native modules were only ever tested unshrunk. Size doesn't matter for a sideloaded APK.
+    ['expo-build-properties', { android: { minSdkVersion: 26, enableMinifyInReleaseBuilds: false } }],
     ...(pushEnabled ? ['@react-native-firebase/app', '@react-native-firebase/messaging'] : []),
   ],
   experiments: { typedRoutes: true },
