@@ -30,11 +30,12 @@ private const val WORK_TAG = "jophiel-senses-report"
  * was seen; WorkManager waits for a network and retries with backoff.
  */
 internal object Reporter {
-  /** Set while JS is live (`startLive`); gets the fields and when they were seen. */
+  /** Set while JS is live (`startLive`); gets the fields, when they were seen, and `force`. */
   @Volatile
-  var liveSink: ((Map<String, Any?>, Long) -> Unit)? = null
+  var liveSink: ((Map<String, Any?>, Long, Boolean) -> Unit)? = null
 
-  fun deliver(context: Context, fields: Map<String, Any?>, at: Long) {
+  /** `force`: send them even when unchanged (JS is told to as well). */
+  fun deliver(context: Context, fields: Map<String, Any?>, at: Long, force: Boolean = false) {
     val app = context.applicationContext
     val enabled = Store.enabledFields(app)
     val wanted = fields.filterKeys { it in enabled }
@@ -42,10 +43,10 @@ internal object Reporter {
     val sink = liveSink
     if (sink != null) {
       // JS keeps its own "what was sent" and diffs against it.
-      sink(wanted, at)
+      sink(wanted, at, force)
       return
     }
-    sendInBackground(app, wanted, at, dedupe = true)
+    sendInBackground(app, wanted, at, dedupe = !force)
   }
 
   /**

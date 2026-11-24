@@ -19,7 +19,8 @@ export interface SensesNative {
   stopLive(): void
   noteSent(fields: Record<string, unknown>, at: number): void
   sendInBackground(fields: Record<string, unknown>, at: number): void
-  onChange(listener: (fields: Record<string, unknown>, at: number) => void): { remove(): void }
+  /** `force`: send them even when unchanged (the media report a moment after one of her commands). */
+  onChange(listener: (fields: Record<string, unknown>, at: number, force: boolean) => void): { remove(): void }
 }
 
 /** The chat socket, as the controller sees it. */
@@ -50,9 +51,14 @@ export class PhoneSenses {
     private readonly now: () => number = Date.now,
   ) {
     this.switches = { ...initialSwitches }
-    native?.onChange((fields, at) => {
+    native?.onChange((fields, at, force) => {
       if (!this.live) return
-      if (this.ingest(fields, at)) this.flush()
+      const changed = this.ingest(fields, at)
+      if (force) {
+        // Her check waits for a report newer than her command, even one saying what it said before.
+        for (const field of PHONE_FIELDS) if (field in fields) delete this.sent[field]
+      }
+      if (changed || force) this.flush()
     })
   }
 

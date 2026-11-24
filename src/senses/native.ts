@@ -17,7 +17,8 @@ const native: SensesNative | null = JophielSenses
       stopLive: () => JophielSenses!.stopLive(),
       noteSent: (fields, at) => JophielSenses!.noteSent(fields, at),
       sendInBackground: (fields, at) => JophielSenses!.sendInBackground(fields, at),
-      onChange: (listener) => JophielSenses!.addListener('onChange', (event) => listener(event.fields, event.at)),
+      onChange: (listener) =>
+        JophielSenses!.addListener('onChange', (event) => listener(event.fields, event.at, event.force === true)),
     }
   : null
 

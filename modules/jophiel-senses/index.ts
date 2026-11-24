@@ -43,7 +43,8 @@ export interface ReportedValue {
 
 export type JophielSensesEvents = {
   /** New values (live readers, or a wake-up while live), seen at `at` (epoch ms). */
-  onChange: (event: { fields: RawFields; at: number }) => void
+  /** `force`: send them even when unchanged (the media report her check reads after a command). */
+  onChange: (event: { fields: RawFields; at: number; force?: boolean }) => void
 }
 
 declare class JophielSensesModule extends NativeModule<JophielSensesEvents> {

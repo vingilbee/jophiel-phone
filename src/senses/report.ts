@@ -50,7 +50,21 @@ function checkMedia(value: unknown): MediaState | undefined {
   const artist = objectText(raw.artist, false)
   const state = raw.state === 'playing' || raw.state === 'paused' ? raw.state : undefined
   if (app === undefined || title === undefined || artist === undefined || state === undefined) return undefined
-  return { app, title, artist, state }
+  const media: MediaState = { app, title, artist, state }
+  // Where in the track: optional, so a bad one is left out rather than costing the whole report.
+  const position = millis(raw.position_ms)
+  const duration = millis(raw.duration_ms)
+  if (position !== undefined) media.position_ms = position
+  if (duration !== undefined) media.duration_ms = duration
+  return media
+}
+
+/** The server takes 0 to a day. */
+const MAX_MS = 86_400_000
+
+function millis(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_MS) return undefined
+  return Math.round(value)
 }
 
 function checkNavigation(value: unknown): NavigationState | undefined {

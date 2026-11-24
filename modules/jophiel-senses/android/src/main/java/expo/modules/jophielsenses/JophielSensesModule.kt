@@ -36,7 +36,7 @@ class JophielSensesModule : Module() {
     /** App visible or a call on: listen to every field and pass wake-up values to JS. */
     Function("startLive") {
       val ctx = context
-      Reporter.liveSink = { fields, at -> emitChange(fields, at) }
+      Reporter.liveSink = { fields, at, force -> emitChange(fields, at, force) }
       main.post {
         if (live == null) live = LiveReaders(ctx) { fields -> emitChange(fields, System.currentTimeMillis()) }
         live?.start()
@@ -130,9 +130,9 @@ class JophielSensesModule : Module() {
     main.post { live?.stop() }
   }
 
-  private fun emitChange(fields: Map<String, Any?>, at: Long) {
+  private fun emitChange(fields: Map<String, Any?>, at: Long, force: Boolean = false) {
     try {
-      sendEvent("onChange", mapOf("fields" to fields, "at" to at.toDouble()))
+      sendEvent("onChange", mapOf("fields" to fields, "at" to at.toDouble(), "force" to force))
     } catch (e: Throwable) {
       // JS may be gone (reload); nothing to tell.
     }
