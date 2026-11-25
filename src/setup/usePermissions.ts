@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { AppState } from 'react-native'
 import {
+  accessibilityPermission,
   activityPermission,
   approximateLocationOnly,
   backgroundLocationPermission,
@@ -43,6 +44,8 @@ export interface Permissions {
   dndAccess: PermissionState
   /** Phase 8: contacts (who's a contact, WhatsApp drafts to a named person). */
   contacts: PermissionState
+  /** Phase 9: the accessibility service (phone control). */
+  accessibility: PermissionState
 }
 
 type Blockable = 'notifications' | 'microphone' | 'location' | 'backgroundLocation' | 'activity' | 'nearby' | 'contacts'
@@ -61,6 +64,7 @@ const INITIAL: Permissions = {
   notificationAccess: 'unknown',
   dndAccess: 'unknown',
   contacts: 'unknown',
+  accessibility: 'unknown',
 }
 
 /**
@@ -86,6 +90,7 @@ export function usePermissions(): [Permissions, () => void, (name: Blockable, st
         notificationAccess: notificationAccessPermission(),
         dndAccess: dndAccessPermission(),
         contacts: await contactsPermission(),
+        accessibility: accessibilityPermission(),
       }
       // Android only says "blocked" when asked; a later check reads "denied". Keep what we learned.
       setState((prev) => {

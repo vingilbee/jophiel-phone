@@ -1,12 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import JophielActions from '../../modules/jophiel-actions'
+import JophielControl from '../../modules/jophiel-control'
 import JophielNotifications from '../../modules/jophiel-notifications'
 import JophielSenses from '../../modules/jophiel-senses'
 import { ApiError } from '@/api/client'
 import { postActionResult } from '@/api/phone'
 import { loadSettings } from '@/settings/store'
 import { setTimeout as setNativeTimeout } from '@/voice/timers'
-import { resultFrame, type ActionResult, type PhoneAction, type PhoneActionResultFrame } from './protocol'
+import { parseScreen, resultFrame, type ActionResult, type PhoneAction, type PhoneActionResultFrame } from './protocol'
 import { retryDelay, runAction, type ActionDeps, type DeviceAnswer, type DeviceDeps } from './run'
 import { seenIds } from './seen'
 
@@ -84,6 +85,7 @@ const SPOTIFY = 'com.spotify.music'
 
 const A = JophielActions
 const N = JophielNotifications
+const C = JophielControl
 
 const device: DeviceDeps = {
   mediaControl: (command) => call(N && (() => N.mediaControl(command))),
@@ -105,6 +107,14 @@ const device: DeviceDeps = {
     return call(A && (() => A.playMusic(query)))
   },
   whatsappDraft: (to, text) => call(A && (() => A.whatsappDraft(to, text))),
+  control: (action, args) =>
+    call(
+      C &&
+        (async () => {
+          const answer = await C.perform(action, args)
+          return { status: answer.status, reason: answer.reason, screen: parseScreen(answer.screen) }
+        }),
+    ),
 }
 
 const deps: ActionDeps = {
@@ -181,4 +191,27 @@ export function hasDndAccess(): boolean | null {
 
 export function openDndSettings() {
   JophielActions?.openDndSettings()
+}
+
+// ---- Phase 9: phone control (the accessibility service) ----
+
+/** The control module is in this build. */
+export const controlAvailable = JophielControl !== null
+
+/** Turned on in Settings → Accessibility; null: not in this build. */
+export function accessibilityEnabled(): boolean | null {
+  try {
+    return JophielControl?.isEnabled() ?? null
+  } catch {
+    return null
+  }
+}
+
+export function openAccessibilitySettings() {
+  JophielControl?.openSettings()
+}
+
+/** The master switch and Phone control, mirrored natively: off ends her control at once. */
+export function setControlAllowed(on: boolean) {
+  JophielControl?.setAllowed(on)
 }

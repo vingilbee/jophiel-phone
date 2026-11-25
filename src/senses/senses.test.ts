@@ -551,8 +551,10 @@ describe('phase 8: now playing, the Maps trip, messages_on', () => {
   })
 
   test('settings: action groups default on, stored ones kept, junk ignored', () => {
-    expect(migrate(null).actionGroups).toEqual({ media: true, messages: true, alarms: true, opening: true })
-    expect(migrate({ actionGroups: { messages: false, opening: 'no' } }).actionGroups).toEqual({ media: true, messages: false, alarms: true, opening: true })
+    expect(migrate(null).actionGroups).toEqual({ media: true, messages: true, alarms: true, opening: true, control: true })
+    // Settings stored before phase 9 get Phone control on.
+    expect(migrate({ actionGroups: { messages: false, opening: 'no' } }).actionGroups).toEqual({ media: true, messages: false, alarms: true, opening: true, control: true })
+    expect(migrate({ actionGroups: { control: false } }).actionGroups.control).toBe(false)
     expect(migrate({ senses: { places: false } }).senses.notifications).toBe(true)
   })
 })

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="jophiel_control_label">Jophiel</string>
+  <string name="jophiel_control_summary">Lets Jophiel use your screen while you talk with her</string>
+  <string name="jophiel_control_description">While you\'re talking with Jophiel, she can read what\'s on your screen (as a picture and as text) and tap, type, scroll and press back or home for you. She never does it on her own or because of someone else\'s message. A banner shows at the top while she\'s working; touching the screen stops her. What she sees goes to your Jophiel server and its AI model and isn\'t stored. You can turn this off here, or with Phone control in the Jophiel app\'s settings.</string>
+</resources>

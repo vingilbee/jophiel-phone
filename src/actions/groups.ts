@@ -1,16 +1,16 @@
 /**
  * Phase 8: Settings → Phone actions has the master switch (phase 7) and one switch per group. All
  * on by default (owner, 2026-11-22). Mirrored natively where native code checks it (Messages, at
- * reply dispatch).
+ * reply dispatch; Phone control, which ends her control at once when it goes off).
  */
-export const ACTION_GROUPS = ['media', 'messages', 'alarms', 'opening'] as const
+export const ACTION_GROUPS = ['media', 'messages', 'alarms', 'opening', 'control'] as const
 
 export type ActionGroup = (typeof ACTION_GROUPS)[number]
 
 export type ActionGroups = Record<ActionGroup, boolean>
 
 export function defaultActionGroups(): ActionGroups {
-  return { media: true, messages: true, alarms: true, opening: true }
+  return { media: true, messages: true, alarms: true, opening: true, control: true }
 }
 
 /**
@@ -27,4 +27,14 @@ export const ACTION_GROUP: Partial<Record<string, ActionGroup>> = {
   open_app: 'opening',
   open_link: 'opening',
   play_music: 'opening',
+  // Phase 9: phone control (on by default, PLAN_PHASE_9.md).
+  read_screen: 'control',
+  tap: 'control',
+  long_press: 'control',
+  type_text: 'control',
+  scroll: 'control',
+  tap_point: 'control',
+  swipe: 'control',
+  press: 'control',
+  end_control: 'control',
 }

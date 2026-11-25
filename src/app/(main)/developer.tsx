@@ -1,10 +1,10 @@
 import * as Clipboard from 'expo-clipboard'
 import { Redirect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { Image, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { runLocalAction } from '@/actions'
-import type { ActionResult } from '@/actions/protocol'
+import type { ActionResult, PhoneScreen, ScreenItem } from '@/actions/protocol'
 import { AppText } from '@/components/AppText'
 import { Button, IconButton, SectionHeader, SwitchRow, TextField } from '@/components/Controls'
 import { lastSeenNotification } from '@/notifications'
@@ -304,6 +304,9 @@ function DeveloperScreen() {
         <SectionHeader title="Phone actions" />
         <ActionsTest onResult={setSnack} />
 
+        <SectionHeader title="Phone control" />
+        <ControlTest onResult={setSnack} />
+
         <View style={[styles.buttons, styles.footer]}>
           <Button label="Reset" variant="text" icon="restore" onPress={() => resetTuning()} />
           <Button label="Copy" variant="tonal" icon="content-copy" onPress={copy} />
@@ -446,6 +449,124 @@ function Phase8Tests({ pending, run }: { pending: string | null; run: (label: st
   )
 }
 
+/** Phase 9: time to switch to the app to test on (inside Jophiel she can only read). */
+const CONTROL_DELAY_MS = 5_000
+/** The takeover test: reads this far apart, in one turn (touch the screen in between). */
+const SAME_TURN_GAP_MS = 4_000
+
+function itemLine(item: ScreenItem): string {
+  const words = item.text ?? item.label ?? ''
+  const state = [
+    item.hint ? `hint “${item.hint}”` : null,
+    item.focused ? 'focused' : null,
+    item.checked === true ? 'on' : item.checked === false ? 'off' : null,
+    item.selected ? 'selected' : null,
+    item.disabled ? 'disabled' : null,
+  ].filter(Boolean)
+  return `${item.n ? `[${item.n}] ` : '    '}${item.role} ${words ? `“${words}”` : ''}${state.length ? ` (${state.join(', ')})` : ''}`
+}
+
+/**
+ * Phase 9: run phone control here, as if she had sent it. With the delay on, switch to the app to
+ * try it in (Settings, Spotify…), wait for the action, then come back to see the screen she'd get.
+ * Each press is its own turn, except the takeover test.
+ */
+function ControlTest({ onResult }: { onResult: (text: string) => void }) {
+  const colors = useColors()
+  const [screen, setScreen] = useState<PhoneScreen | null>(null)
+  const [pending, setPending] = useState<string | null>(null)
+  const [delay, setDelay] = useState(true)
+  const [n, setN] = useState('1')
+  const [text, setText] = useState('wi-fi')
+  const [enter, setEnter] = useState(false)
+  const timer = useRef<TimerHandle | null>(null)
+  useEffect(() => () => clearNativeTimeout(timer.current), [])
+
+  const run = async (label: string, action: string, args: Record<string, unknown>, turn = `dev-${Date.now()}`) => {
+    const result = await runLocalAction(action, { ...args, turn })
+    const data = result?.data && 'screen' in result.data ? result.data.screen : null
+    if (data) setScreen(data)
+    onResult(`${label}: ${resultText(result)}${data ? ` (${data.id}, ${data.items.length} items${data.image_missing ? `, no picture: ${data.image_missing}` : ''})` : ''}`)
+  }
+
+  const go = (label: string, action: string, args: Record<string, unknown> = {}) => {
+    setPending(label)
+    const start = () => void run(label, action, args).finally(() => setPending(null))
+    if (delay) timer.current = setNativeTimeout(start, CONTROL_DELAY_MS)
+    else start()
+  }
+
+  const onScreen = (args: Record<string, unknown>) => ({ screen: screen?.id ?? 'none', ...args })
+  const number = Number(n)
+
+  const sameTurn = () => {
+    const turn = `dev-${Date.now()}`
+    setPending('3 reads, one turn')
+    let left = 3
+    const step = () => {
+      timer.current = setNativeTimeout(() => {
+        void run(`read ${4 - left} of 3`, 'read_screen', {}, turn).then(() => {
+          left -= 1
+          if (left > 0) step()
+          else setPending(null)
+        })
+      }, SAME_TURN_GAP_MS)
+    }
+    step()
+  }
+
+  const busy = pending !== null
+  const b = (label: string, icon: Parameters<typeof Button>[0]['icon'], action: string, args: Record<string, unknown> = {}) => (
+    <Button key={label} label={label} variant="tonal" icon={icon} disabled={busy} onPress={() => go(label, action, args)} />
+  )
+  const image = screen?.image
+  return (
+    <View style={styles.block}>
+      <AppText role="bodyMedium" color="onSurfaceVariant">
+        {pending ? `Running ${pending}…` : 'Runs on this phone only; the server hears nothing. Turn Jophiel on in Accessibility first.'}
+      </AppText>
+      <SwitchRow title="Wait 5 s first" supporting="Time to switch to the app to try it in." value={delay} onValueChange={setDelay} />
+      <View style={styles.buttons}>
+        {b('Read screen', 'monitor-eye', 'read_screen')}
+        {b('Scroll down', 'arrow-down', 'scroll', onScreen({ direction: 'down' }))}
+        {b('Back', 'arrow-left', 'press', { key: 'back' })}
+        {b('Home', 'home-outline', 'press', { key: 'home' })}
+        {b('End control', 'stop', 'end_control')}
+      </View>
+      <TextField label="Number" value={n} onChangeText={setN} keyboardType="number-pad" />
+      <View style={styles.buttons}>
+        {b(`Tap ${n}`, 'gesture-tap', 'tap', onScreen({ n: number }))}
+        {b(`Long press ${n}`, 'gesture-tap-hold', 'long_press', onScreen({ n: number }))}
+        {b('Tap the middle', 'crosshairs', 'tap_point', onScreen({ x: Math.floor((image?.width ?? 720) / 2), y: Math.floor((image?.height ?? 1600) / 2) }))}
+      </View>
+      <TextField label="Text to type" value={text} onChangeText={setText} autoCapitalize="none" />
+      <SwitchRow title="Press enter after" value={enter} onValueChange={setEnter} />
+      <View style={styles.buttons}>
+        {b(`Type into ${n}`, 'keyboard-outline', 'type_text', onScreen({ n: number, text, enter }))}
+        <Button label="Takeover test" variant="tonal" icon="hand-back-left-outline" disabled={busy} onPress={sameTurn} />
+      </View>
+      {screen ? (
+        <View style={styles.block}>
+          <AppText role="titleSmall">{`${screen.id} · ${screen.app ?? screen.package ?? 'unknown app'}${screen.keyboard ? ' · keyboard up' : ''}${screen.truncated ? ' · truncated' : ''}`}</AppText>
+          {image ? (
+            <Image
+              source={{ uri: `data:image/jpeg;base64,${image.jpeg_base64}` }}
+              style={[styles.shot, { aspectRatio: image.width / image.height, borderColor: colors.outlineVariant }]}
+              resizeMode="contain"
+              accessibilityLabel={`The numbered screenshot of ${screen.app ?? 'the screen'}`}
+            />
+          ) : (
+            <AppText role="bodySmall" color="onSurfaceVariant">{`No picture: ${screen.image_missing ?? 'unknown'}`}</AppText>
+          )}
+          <AppText role="bodySmall" color="onSurfaceVariant" style={styles.mono}>
+            {screen.items.slice(0, 120).map(itemLine).join('\n')}
+          </AppText>
+        </View>
+      ) : null}
+    </View>
+  )
+}
+
 const CLOCK_TICK_MS = 5_000
 
 /**
@@ -551,4 +672,5 @@ const styles = StyleSheet.create({
   meterMarker: { position: 'absolute', top: 0, bottom: 0, width: 2 },
   stepper: { flexDirection: 'row', alignItems: 'center', paddingLeft: space.lg, paddingRight: space.xs, minHeight: 56, gap: space.xs },
   stepperText: { flex: 1, gap: 2 },
+  shot: { width: '100%', borderWidth: StyleSheet.hairlineWidth },
 })

@@ -49,10 +49,42 @@ export interface DraftData {
   target: 'contact' | 'picker'
 }
 
+/** Phase 9: one item of a screen; numbered ones (`n`) can be acted on. `box`: [x, y, w, h] in screenshot pixels. */
+export interface ScreenItem {
+  n?: number
+  role: string
+  text?: string
+  label?: string
+  hint?: string
+  focused?: boolean
+  checked?: boolean
+  selected?: boolean
+  disabled?: boolean
+  password?: boolean
+  box?: [number, number, number, number]
+}
+
+/** Phase 9, `data.screen` (PLAN_PHASE_9.md "The contract"): the screen after an action settled. */
+export interface PhoneScreen {
+  id: string
+  app: string | null
+  package: string | null
+  keyboard: boolean
+  image: { jpeg_base64: string; width: number; height: number } | null
+  /** Why there's no picture: `secure`, `not_supported` (below Android 11), `failed`. */
+  image_missing: 'secure' | 'not_supported' | 'failed' | null
+  items: ScreenItem[]
+  truncated?: boolean
+}
+
+export interface ScreenData {
+  screen: PhoneScreen
+}
+
 export interface ActionResult {
   status: ResultStatus
   reason?: string
-  data?: PositionData | PlaceData | OpenedData | DraftData
+  data?: PositionData | PlaceData | OpenedData | DraftData | ScreenData
 }
 
 export interface PhoneActionResultFrame extends ActionResult {
@@ -235,4 +267,32 @@ export function playMusicArgs(args: Record<string, unknown>): string | null {
 export function draftArgs(args: Record<string, unknown>): { to: string | null; text: string } | null {
   const body = textUpTo(args.text, MAX_MESSAGE_TEXT)
   return body ? { to: textUpTo(args.to, 100), text: body } : null
+}
+
+// ---- Phase 9 (PLAN_PHASE_9.md "Actions"): args are checked natively (modules/jophiel-control) ----
+
+export const CONTROL_ACTIONS: readonly string[] = [
+  'read_screen',
+  'tap',
+  'long_press',
+  'type_text',
+  'scroll',
+  'tap_point',
+  'swipe',
+  'press',
+  'end_control',
+]
+
+/** The screen JSON the native side built; null when it isn't one (then the action counts as failed). */
+export function parseScreen(json: string | null): PhoneScreen | null {
+  if (!json) return null
+  try {
+    const screen: unknown = JSON.parse(json)
+    if (!screen || typeof screen !== 'object') return null
+    const s = screen as Record<string, unknown>
+    if (typeof s.id !== 'string' || !Array.isArray(s.items)) return null
+    return screen as PhoneScreen
+  } catch {
+    return null
+  }
 }

@@ -250,3 +250,47 @@ Settled with the owner on 2026-11-24 (second grilling):
     turn. Remembered screens are recall only.
 12. **Banner and control end** on `end_control` or 20 s after her last action.
 13. **80 actions per turn**, like desktop; at the limit she says how far she got.
+
+## Implementation notes (phone half, 2026-11-24)
+
+Built on branch `phase-9-phone-control`: steps 9.1–9.5 on the phone side, against this plan's contract
+(the backend, 9.0, isn't built yet). The full debug APK builds, but nothing has run on an emulator
+or the S21 yet. 9.6 is still open.
+
+- **Module** `modules/jophiel-control`: `JophielControlService` (accessibility service + config XML
+  and the plain-words description in the module's `res/`), `ScreenReader`, `Screenshot`, `Actor`,
+  `Banner`, `Controller` (one action at a time on its own thread), and the pure `ControlLogic.kt`
+  (args, roles, labels, reading order, numbering, point mapping, `TurnGate`, own-app rule, black
+  check, screen JSON). Tests: `cd android && ./gradlew :jophiel-control:testDebugUnitTest`.
+- **Checks, in order** (native): args (`bad_args`), `end_control`, switches (`switched_off`), service
+  bound (`no_accessibility`), turn (`taken_over`), `screen_off`, `locked`, `own_app`, `stale_screen`.
+  JS checks expiry, the master switch and the Phone control group first, as for phase 8's groups.
+- **Reasons beyond the plan's list**: `unknown_action`, `bad_args` and `error` as in phase 7;
+  `not_supported` for `type_text` with `enter` below Android 11 (no IME-enter action there).
+- **Labels**: a numbered row with no text of its own is named by the texts inside it, joined with
+  " · " ("Connections · Wi-Fi · Bluetooth"); those texts aren't repeated as plain items. Nodes whose
+  centre a window above covers (dialog, shade, keyboard) are left out.
+- **Takeover during an action**: if your touch comes while an action runs, that action answers
+  `refused`, `taken_over` (no screen), even though the action itself already happened.
+- **Banner**: while her own gesture runs, the banner lets touches through (so a point tap where it
+  sits reaches the app, not Stop), and touches until 300 ms after aren't taken for yours. After the
+  20 s idle timeout the latest screen stays valid; `end_control`, your touch or a switch going off
+  drops it.
+- **Switches**: `setAllowed` mirrors master + Phone control natively (useSensesBridge), so switching
+  off ends control at once. Settings stored before phase 9 get Phone control on.
+- **Setup**: new step "Accessibility" after "Notification access"; "Allow restricted settings" now
+  stays until both notification access and accessibility are on. Settings → Permissions has an
+  Accessibility row.
+- **Developer screen → Phone control**: read / scroll / back / home / end, tap / long-press / type by
+  number, tap the middle, and a takeover test (3 reads 4 s apart in one turn: touch the screen in
+  between, and the later reads answer `taken_over`). "Wait 5 s first" gives time to switch to
+  the app you're testing in.
+
+### Backend follow-ups (for the backend agent)
+
+1. The plan says the phone's state report "already carries" the master and Phone control
+   switches. It doesn't: only `messages_on` is there. To wipe short-term screen memory when either
+   goes off, the backend needs a new field (e.g. `control_on`). The phone will send it once the
+   backend accepts it; sending it now would get sense frames rejected (extra=forbid).
+2. Expect `data.screen` up to ~1 MB on the socket and on `POST /api/phone/actions/{id}/result`
+   (backend list item 4).

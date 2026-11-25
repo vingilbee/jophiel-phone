@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { actionsAvailable, openDndSettings, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
+import { actionsAvailable, controlAvailable, openAccessibilitySettings, openDndSettings, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
 import { notificationsAvailable, openNotificationAccessSettings } from '@/notifications'
 import { checkHealth } from '@/api/auth'
 import { AppText } from '@/components/AppText'
@@ -39,6 +39,7 @@ const STEP_IDS = [
   'full-screen',
   'restricted-settings',
   'notification-access',
+  'accessibility',
   'dnd-access',
   'contacts',
   'battery',
@@ -48,6 +49,11 @@ type StepId = (typeof STEP_IDS)[number]
 
 function isStep(value: unknown): value is StepId {
   return typeof value === 'string' && (STEP_IDS as readonly string[]).includes(value)
+}
+
+/** Android 13+ keeps both notification access and accessibility behind "Allow restricted settings". */
+function restrictedStillNeeded(p: Permissions): boolean {
+  return (notificationsAvailable && p.notificationAccess !== 'granted') || (controlAvailable && p.accessibility !== 'granted')
 }
 
 /**
@@ -70,10 +76,12 @@ function steps(p: Permissions, current: StepId): StepId[] {
       case 'full-screen':
         return actionsAvailable && hasFullScreenPermission
       case 'restricted-settings':
-        // Only needed until notification access is on (Android has no way to read the setting).
-        return notificationsAvailable && hasRestrictedSettings && (current === id || p.notificationAccess !== 'granted')
+        // Only needed until notification access and accessibility are on (Android has no way to read the setting).
+        return (notificationsAvailable || controlAvailable) && hasRestrictedSettings && (current === id || restrictedStillNeeded(p))
       case 'notification-access':
         return notificationsAvailable
+      case 'accessibility':
+        return controlAvailable
       case 'dnd-access':
         return actionsAvailable
       case 'contacts':
@@ -150,8 +158,11 @@ export default function SetupStep() {
       case 'full-screen':
         return permissions.fullScreen === 'granted'
       case 'restricted-settings':
+        return !restrictedStillNeeded(permissions)
       case 'notification-access':
         return permissions.notificationAccess === 'granted'
+      case 'accessibility':
+        return permissions.accessibility === 'granted'
       case 'dnd-access':
         return permissions.dndAccess === 'granted'
       case 'contacts':
@@ -328,7 +339,7 @@ export default function SetupStep() {
       icon = 'shield-lock-open-outline'
       title = 'Allow restricted settings'
       body =
-        'Android keeps apps installed from a file (like this one) away from notification access until you allow it. In App info, tap ⋮ (top right) → “Allow restricted settings”, confirm, then come back. If there’s no ⋮ menu yet, tap Next, try to turn on notification access once (Android refuses), then come back here: the menu shows up after that.'
+        'Android keeps apps installed from a file (like this one) away from notification access and accessibility until you allow it. In App info, tap ⋮ (top right) → “Allow restricted settings”, confirm, then come back. If there’s no ⋮ menu yet, tap Next, try to turn on notification access once (Android refuses), then come back here: the menu shows up after that.'
       action = done ? null : { label: 'Open App info', onPress: () => void openBatterySettings() }
       break
     case 'notification-access':
@@ -339,6 +350,16 @@ export default function SetupStep() {
       action = done ? null : { label: 'Open notification access', onPress: () => openNotificationAccessSettings() }
       if (!done && hasRestrictedSettings) {
         problem = 'If Android says it’s a restricted setting, go back one step and allow restricted settings first.'
+      }
+      break
+    case 'accessibility':
+      icon = 'gesture-tap'
+      title = 'Using your screen for you'
+      body =
+        'So she can do things in any app while you’re talking with her: pick a song in Spotify, open a chat and send a message, turn on the hotspot. She sees the screen (a picture and its text) and taps, types and scrolls on it, in front of you, never on her own. A banner shows while she works; touch the screen to stop her. Tap below, find Jophiel (under Installed apps on Samsung), turn it on, then come back. You can switch it off any time in Settings → Her actions → Phone control.'
+      action = done ? null : { label: 'Open accessibility settings', onPress: () => openAccessibilitySettings() }
+      if (!done && hasRestrictedSettings) {
+        problem = 'If Android says it’s a restricted setting, go back to “Allow restricted settings” first.'
       }
       break
     case 'dnd-access':
