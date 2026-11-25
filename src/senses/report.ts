@@ -15,7 +15,7 @@ const ENUMS: Partial<Record<PhoneField, readonly string[]>> = {
   motion: ['still', 'walking', 'running', 'cycling', 'vehicle'],
 }
 
-const BOOLEANS: readonly PhoneField[] = ['locked', 'charging', 'headphones', 'dnd', 'messages_on']
+const BOOLEANS: readonly PhoneField[] = ['locked', 'charging', 'headphones', 'dnd', 'messages_on', 'control_on']
 
 /** Text inside phase 8's objects: the server's limits (a long title must not fail the frame). */
 const OBJECT_TEXT_MAX = 200
@@ -127,7 +127,8 @@ export function checkFields(raw: Record<string, unknown>): Known {
 export function effective(known: Known, switches: SenseSwitches): Known {
   const out: Record<string, unknown> = {}
   for (const field of PHONE_FIELDS) {
-    if (!switches[groupOf(field)]) out[field] = null
+    const group = groupOf(field)
+    if (group && !switches[group]) out[field] = null
     else if (known[field] !== undefined) out[field] = known[field]
   }
   return out as Known

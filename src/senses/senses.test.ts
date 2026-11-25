@@ -531,6 +531,20 @@ describe('phase 8: now playing, the Maps trip, messages_on', () => {
     expect(Object.keys(frames.at(-1) as object).sort()).toEqual(['messages_on', 'observed_at'])
   })
 
+  test('control_on: no sense switch holds it back, and a change goes out at once', () => {
+    expect(groupOf('control_on')).toBeNull()
+    expect(checkValue('control_on', false)).toBe(false)
+    const allOff = Object.fromEntries(Object.keys(ALL_ON).map((group) => [group, false])) as typeof ALL_ON
+    expect(effective({ control_on: false }, allOff)).toMatchObject({ control_on: false })
+
+    const fake = fakeNative({ battery: 50 })
+    const senses = new PhoneSenses(fake.native, ALL_ON, () => T0)
+    senses.setLocal({ control_on: true }, false)
+    expect(senses.report(true)).toMatchObject({ control_on: true })
+    senses.setLocal({ control_on: false }, true)
+    expect(fake.calls.background).toEqual([{ fields: { control_on: false }, at: T0 }])
+  })
+
   test('the Notifications group off reads null for all three', () => {
     expect(effective({ media: song as never, messages_on: true }, off('notifications'))).toMatchObject({
       media: null,

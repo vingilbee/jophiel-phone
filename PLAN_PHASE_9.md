@@ -292,5 +292,25 @@ or the S21 yet. 9.6 is still open.
    switches. It doesn't: only `messages_on` is there. To wipe short-term screen memory when either
    goes off, the backend needs a new field (e.g. `control_on`). The phone will send it once the
    backend accepts it; sending it now would get sense frames rejected (extra=forbid).
+   **Done:** the backend accepts it and the phone now sends it (no sense switch holds it back).
 2. Expect `data.screen` up to ~1 MB on the socket and on `POST /api/phone/actions/{id}/result`
    (backend list item 4).
+
+## Backend 9.0 (done, `../app` branch `feature/phone-phase-9-backend`, 2026-11-24)
+
+The contract above is the final one, with these specifics for the phone:
+
+- **New state field `control_on`** (`PUT /api/phone/state` and the socket's state frame): the master switch AND
+  Phone control together, sent like `messages_on` (on change, and with the first report). `false` wipes her
+  short-term screen memory at once and shows her "Phone control is switched off". Not sent yet = unknown (nothing
+  wiped).
+- `args.turn` is the backend's turn UUID as a string; a new turn id is the newest (no ordering beyond "not seen
+  before"). The backend also refuses an older turn's actions itself (`taken_over`) and stops waiting on them.
+- `data.screen`: as specified; item fields beyond the listed ones are ignored, `password: true` is read as "text
+  hidden". `image.jpeg_base64` up to ~1.4 M chars. `end_control` answers `done` without data; every other control
+  action's `done` must carry `data.screen` (else the result is rejected with 422).
+- Waits: `read_screen` 15 s, the others 10 s (20 s once the action went by push).
+- Reasons are shown to her as written in this file; `unknown_action` / `bad_args` from an older build are said as
+  "their phone app is too old" / "didn't accept those arguments".
+- One chat line per turn (`phone_activity`): "Used your phone in Spotify, 9 steps", "Looked at your phone's screen
+  in Settings", with "(you took over)" / "(stopped at the step limit)".

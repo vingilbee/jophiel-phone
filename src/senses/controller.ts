@@ -10,7 +10,7 @@ import { changes, checkFields, effective, fieldsOf, isEmpty, sameValue, type Kno
 const WAKE_UP_FIELDS: readonly PhoneField[] = ['motion', 'place', 'media', 'navigation']
 
 /** Fields JS itself knows (a setting), not the native module: a snapshot never clears them. */
-const LOCAL_FIELDS: readonly PhoneField[] = ['messages_on']
+const LOCAL_FIELDS: readonly PhoneField[] = ['messages_on', 'control_on']
 
 /** What the controller needs from the native module (a stand-in in tests; null in an old build). */
 export interface SensesNative {

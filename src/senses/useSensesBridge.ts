@@ -73,9 +73,13 @@ export function useSensesBridge() {
 
   // Phase 9: the master switch and Phone control, mirrored natively so switching either off ends
   // her control at once (banner gone, screen dropped), not just at her next action.
+  // Also phone state (`control_on`): off wipes her short-term screen memory on the backend.
   const controlOn = settings.actionsEnabled && settings.actionGroups.control
+  const firstControl = useRef(true)
   useEffect(() => {
     setControlAllowed(controlOn)
+    phoneSenses.setLocal({ control_on: controlOn }, !firstControl.current)
+    firstControl.current = false
   }, [controlOn])
 
   useEffect(() => {

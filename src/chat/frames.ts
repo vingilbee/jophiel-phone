@@ -143,6 +143,7 @@ export const PHONE_FIELDS = [
   'media',
   'navigation',
   'messages_on',
+  'control_on',
 ] as const
 
 export type PhoneField = (typeof PHONE_FIELDS)[number]
@@ -169,6 +170,8 @@ export interface PhoneState {
   navigation: NavigationState | null
   /** Phase 8: Settings → Phone actions → Messages (and the master switch) on: her replies and drafts may go out. */
   messages_on: boolean | null
+  /** Phase 9: the master switch and Phone control both on (false wipes her short-term screen memory). */
+  control_on: boolean | null
 }
 
 export interface MediaState {
