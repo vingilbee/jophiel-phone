@@ -144,8 +144,8 @@ New reasons: `no_accessibility` (service off), `locked`, `screen_off`, `taken_ov
    comes back with it; `taken_over` means you took the phone, stop).
 2. **Show her the screenshots** as images (like the desktop `screenshot_hook`: the newest few in
    context, older ones as their text only) plus the `items` text.
-3. Offer the tools **only on reply turns** (talking with you); never on her own turns or turns from
-   others' messages.
+3. Offer the tools **only on reply turns** (talking with you), and her look again after one (decision 7);
+   never on her other own turns or turns from others' messages.
 4. Accept large results: `data.screen` up to ~1 MB on the socket frame and on
    `POST /api/phone/actions/{id}/result`.
 5. Wait ~10 s for these actions (settle up to 2 s + screenshot).
@@ -241,7 +241,12 @@ New reasons: `no_accessibility` (service off), `locked`, `screen_off`, `taken_ov
 Settled with the owner on 2026-11-24 (second grilling):
 
 7. **Reply turns only**, typed or spoken (in the app or a background voice call). Never her own
-   turns, never someone else's message.
+   turns, never someone else's message. *Amended 2026-11-25 (the owner's decision):* one exception,
+   her **look again** (`backend/app/services/phone_look.py`). A reply turn whose hands acted and
+   wasn't taken over schedules a wake 10 s after it ends; that wake has the screen tools for what the
+   user's message asked, within 10 minutes of that message, and is dropped by any newer message of
+   theirs. A look that acts schedules the next; one that doesn't ends the chain. Never on a wake
+   someone else's words caused. The phone's own refusals (locked, screen off) still stand.
 8. **Unlocked phone only**; no Smart Lock path (nobody watching = banner and touch can't stop her).
 9. **Her own app: read only** (`own_app`), back / home still work. Her switches stay the owner's.
 10. **Your new words end the old turn's control**; she restarts from the latest screen.
