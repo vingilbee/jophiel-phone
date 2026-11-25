@@ -139,9 +139,9 @@ class ControlLogicTest {
 
   @Test
   fun pointsMapToTheRealScreenAndOutsideIsOffScreen() {
-    val scale = ControlLogic.scaleFor(1080)
+    val scale = ControlLogic.scaleFor(1080, 2400)
     assertEquals(720.0 / 1080, scale, 1e-9)
-    assertEquals(1.0, ControlLogic.scaleFor(600), 1e-9)
+    assertEquals(1.0, ControlLogic.scaleFor(600, 1200), 1e-9)
     assertEquals(Pair(540, 1200), ControlLogic.toScreen(360, 800, scale, 720, 1600))
     assertNull(ControlLogic.toScreen(720, 10, scale, 720, 1600))
     assertNull(ControlLogic.toScreen(-1, 10, scale, 720, 1600))
@@ -249,9 +249,18 @@ class ControlLogicTest {
   // ---- JSON ----
 
   @Test
+  fun landscapeKeepsTheShortEdgeAt720() {
+    val scale = ControlLogic.scaleFor(2400, 1080)
+    assertEquals(720.0 / 1080, scale, 1e-9)
+    // A landscape picture is 1600x720, not 720x324: a point near its far corner maps back in full.
+    assertEquals(Pair(2398, 1078), ControlLogic.toScreen(1599, 719, scale, 1600, 720))
+    assertNull(ControlLogic.toScreen(1600, 10, scale, 1600, 720))
+  }
+
+  @Test
   fun theScreenJsonHasTheContractsShape() {
     val built = ControlLogic.build(settings)
-    val scale = ControlLogic.scaleFor(1080)
+    val scale = ControlLogic.scaleFor(1080, 2400)
     val json = ControlLogic.screenJson("s7", "Settings", "com.android.settings", false, null, 720, 1600, "secure", built, scale)
     assertTrue(json.startsWith("{\"id\":\"s7\",\"app\":\"Settings\",\"package\":\"com.android.settings\",\"keyboard\":false,\"image\":null,\"image_missing\":\"secure\",\"items\":["))
     assertTrue(json.contains("{\"role\":\"text\",\"text\":\"Settings\"}"))

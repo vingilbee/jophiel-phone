@@ -356,7 +356,7 @@ export default function SetupStep() {
       icon = 'gesture-tap'
       title = 'Using your screen for you'
       body =
-        'So she can do things in any app while you’re talking with her: pick a song in Spotify, open a chat and send a message, turn on the hotspot. She sees the screen (a picture and its text) and taps, types and scrolls on it, in front of you, never on her own. A banner shows while she works; touch the screen to stop her. Tap below, find Jophiel (under Installed apps on Samsung), turn it on, then come back. You can switch it off any time in Settings → Her actions → Phone control.'
+        'So she can do things in any app while you’re talking with her: pick a song in Spotify, open a chat and send a message, turn on the hotspot. She sees the screen (a picture and its text) and taps, types and scrolls on it, in front of you, never on her own. A banner shows while she works; tap its Stop to stop her. Tap below, find Jophiel (under Installed apps on Samsung), turn it on, then come back. You can switch it off any time in Settings → Her actions → Phone control.'
       action = done ? null : { label: 'Open accessibility settings', onPress: () => openAccessibilitySettings() }
       if (!done && hasRestrictedSettings) {
         problem = 'If Android says it’s a restricted setting, go back to “Allow restricted settings” first.'

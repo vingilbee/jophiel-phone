@@ -82,7 +82,8 @@ her understand the screen (icons without labels, layout, images).
 - While she's in control a small banner shows at the top: **"Jophiel is using your phone · Stop"**.
   It's drawn by the accessibility service itself (no extra permission) and hidden for the moment a
   screenshot is taken, so she never sees it.
-- **Your touch stops her.** Touching the screen anywhere (or the banner's Stop) ends her control at
+- **Stop stops her** (2026-11-25: only the banner's Stop; touches elsewhere no longer count, since telling
+  yours from her own injected gestures misfired). Stop ends her control at
   once: the banner goes, and every further action **for that turn** answers `refused`, `taken_over`.
   She's told you took over. Asking her again (a new turn) lets her start again.
 - The banner hides on `end_control`, or 20 s after her last action. That also ends her control:

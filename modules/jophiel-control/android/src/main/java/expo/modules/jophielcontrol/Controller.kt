@@ -71,7 +71,7 @@ internal object Controller {
     val service = JophielControlService.instance ?: return refused("no_accessibility")
     if (!synchronized(lock) { gate.admit(request.turn, SystemClock.elapsedRealtime()) }) return refused("taken_over")
     if (context.getSystemService(PowerManager::class.java)?.isInteractive == false) return refused("screen_off")
-    // Unlocked only: with nobody looking at the screen, the banner and your touch can't stop her.
+    // Unlocked only: with nobody looking at the screen, the banner's Stop can't stop her.
     if (context.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true) return refused("locked")
     if (!ControlLogic.allowedInFront(request, ScreenReader.frontPackage(service), context.packageName)) return refused("own_app")
     val current = screen
@@ -113,7 +113,7 @@ internal object Controller {
     val reading = ScreenReader.read(service)
     val built = ControlLogic.build(reading.nodes)
     val size = displaySize(service)
-    val scale = ControlLogic.scaleFor(size.x)
+    val scale = ControlLogic.scaleFor(size.x, size.y)
     val shot = Screenshot.take(service, built.items, scale, reading.appBounds)
     val width = if (shot.jpegBase64 != null) shot.width else (size.x * scale).toInt()
     val height = if (shot.jpegBase64 != null) shot.height else (size.y * scale).toInt()
@@ -145,7 +145,7 @@ internal object Controller {
     if (!keepScreen) screen = null
   }
 
-  /** Your touch, or Stop: the turn she was acting in is over. `by`: "stop" or "touch" (outside the banner). */
+  /** Stop on the banner: the turn she was acting in is over. `by`: "stop". */
   fun takenOver(by: String) {
     // Diagnostic only (`adb logcat -s JophielControl`): what ended her turn, and when, against her own actions.
     Log.i("JophielControl", "takeover by $by, ${SystemClock.uptimeMillis() - lastActionAt} ms after her last action started" +

@@ -39,7 +39,7 @@ const ACTION_GROUP_TEXT: Record<ActionGroup, { title: string; on: string; off: s
   opening: { title: 'Opening apps', on: 'Any app or link, and Spotify by song name, only while she’s talking with you.', off: 'Off: she can’t open apps, links or Spotify.' },
   control: {
     title: 'Phone control',
-    on: 'She sees your screen and taps, types and scrolls, only while she’s talking with you. A banner shows while she works; touch the screen to stop her.',
+    on: 'She sees your screen and taps, types and scrolls, only while she’s talking with you. A banner shows while she works; tap its Stop to stop her.',
     off: 'Off: she can’t see or use your screen.',
   },
 }

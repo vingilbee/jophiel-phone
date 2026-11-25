@@ -2,7 +2,7 @@
   <application>
     <!--
       Phase 9, phone control: she reads the screen and taps, types, scrolls and presses back / home,
-      only while you're talking with her, with a banner up and your touch stopping her. Android binds
+      only while you're talking with her, with a banner up whose Stop stops her. Android binds
       it once you turn Jophiel on in Settings → Accessibility (after "Allow restricted settings").
     -->
     <service

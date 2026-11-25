@@ -21,7 +21,7 @@ internal class Shot(val jpegBase64: String?, val width: Int, val height: Int, va
 
 /**
  * The picture with numbers: Android's accessibility screenshot (Android 11+), with our banner
- * hidden for the moment it's taken, scaled to 720 px wide, a numbered box drawn on every item she
+ * hidden for the moment it's taken, scaled so its short edge is 720 px, a numbered box drawn on every item she
  * can act on, as JPEG. A secure window (banking, incognito) comes out black: text only.
  */
 internal object Screenshot {

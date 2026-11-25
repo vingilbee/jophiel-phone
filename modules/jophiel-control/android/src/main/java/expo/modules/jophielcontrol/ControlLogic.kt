@@ -94,7 +94,8 @@ internal object ControlLogic {
   const val MAX_CHARS = 12_000
   const val MAX_LABEL = 300
   const val MAX_TYPED = 4_000
-  const val IMAGE_WIDTH = 720
+  /** The screenshot's short edge: 720 px wide in portrait, 720 px tall in landscape. */
+  const val IMAGE_SHORT_EDGE = 720
   const val JPEG_QUALITY = 70
   const val MAX_WAIT_MS = 5_000L
   const val SWIPE_DEFAULT_MS = 300L
@@ -229,8 +230,15 @@ internal object ControlLogic {
   fun settled(now: Long, actionAt: Long, lastEventAt: Long): Boolean =
     now - maxOf(actionAt, lastEventAt) >= QUIET_MS || now - actionAt >= SETTLE_MAX_MS
 
-  /** Screenshot width (720, or the screen's own when it's narrower) over the real width. */
-  fun scaleFor(screenWidth: Int): Double = if (screenWidth > IMAGE_WIDTH) IMAGE_WIDTH.toDouble() / screenWidth else 1.0
+  /**
+   * Screenshot size over the real size: the short edge comes out 720 (or the screen's own when it's
+   * smaller), whichever way the phone is held. Scaling by the width made a landscape game ~720x330,
+   * too small to point at its buttons.
+   */
+  fun scaleFor(screenWidth: Int, screenHeight: Int): Double {
+    val short = minOf(screenWidth, screenHeight)
+    return if (short > IMAGE_SHORT_EDGE) IMAGE_SHORT_EDGE.toDouble() / short else 1.0
+  }
 
   /** A screenshot pixel to a real screen pixel; null when it's outside the screenshot (`off_screen`). */
   fun toScreen(x: Int, y: Int, scale: Double, imageWidth: Int, imageHeight: Int): Pair<Int, Int>? {
@@ -477,7 +485,7 @@ internal object ControlLogic {
 }
 
 /**
- * Who's in charge, per reply turn. Your touch takes over the turn she was acting in: every further
+ * Who's in charge, per reply turn. Stop on the banner takes over the turn she was acting in: every further
  * action of that turn answers `taken_over`. A turn older than the newest one seen is over too (your
  * new words started another). Without a `turn`, a takeover blocks turn-less actions for 30 s.
  */
@@ -512,7 +520,7 @@ internal class TurnGate(private val noTurnBlockMs: Long = ControlLogic.NO_TURN_B
     return turn in takenOver || (turn in seen && seen.last() != turn)
   }
 
-  /** You touched the screen (or tapped Stop): the current turn is over. */
+  /** You tapped Stop: the current turn is over. */
   fun takeOver(now: Long) {
     val turn = current
     if (turn == null) {
