@@ -176,6 +176,10 @@ export interface MediaState {
   title: string
   artist: string | null
   state: 'playing' | 'paused'
+  /** Where in the track when observed (Android's PlaybackState), ms; left out when the app doesn't say. */
+  position_ms?: number
+  /** How long the track is (MediaMetadata), ms; left out when unknown (a live stream). */
+  duration_ms?: number
 }
 
 export interface NavigationState {

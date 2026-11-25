@@ -55,12 +55,13 @@ internal object Senses {
 
   /**
    * Phase 8: `media` or `navigation` from the notification listener (jophiel-notifications), kept
-   * as last seen (like motion and place) and handed on like any other change.
+   * as last seen (like motion and place) and handed on like any other change. `force`: sent even
+   * unchanged (the media report a moment after one of her commands, which her check reads).
    */
-  fun onField(context: Context, field: String, value: Map<String, Any?>?, at: Long) {
+  fun onField(context: Context, field: String, value: Map<String, Any?>?, at: Long, force: Boolean = false) {
     if (field !in FIELD_FROM_LISTENER || !Store.groupOn(context, Groups.NOTIFICATIONS)) return
     Store.setValue(context, field, value)
-    Reporter.deliver(context, mapOf(field to value), at)
+    Reporter.deliver(context, mapOf(field to value), at, force)
   }
 
   private val FIELD_FROM_LISTENER = setOf("media", "navigation")

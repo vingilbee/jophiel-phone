@@ -151,6 +151,12 @@ class FieldReceiver : BroadcastReceiver() {
       @Suppress("UNCHECKED_CAST")
       (Store.normalize(parsed) as? Map<String, Any?>) ?: return
     }
-    Senses.onField(context.applicationContext, field, value, intent.getLongExtra("at", System.currentTimeMillis()))
+    Senses.onField(
+      context.applicationContext,
+      field,
+      value,
+      intent.getLongExtra("at", System.currentTimeMillis()),
+      intent.getBooleanExtra("force", false),
+    )
   }
 }

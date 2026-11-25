@@ -170,6 +170,18 @@ internal fun clip(text: String?, max: Int): String? {
 
 internal fun isoTime(at: Long, zone: ZoneId): String = OffsetDateTime.ofInstant(Instant.ofEpochMilli(at), zone).toString()
 
+/**
+ * Whether a MessagingStyle message was written on this phone. No `Person`: the app's own convention for "you". Both
+ * keys set: they decide. Otherwise the name: WhatsApp re-posts a chat after a reply-button send with the reply under
+ * a `Person` of its own named like the style's user ("You") and no key, which keys alone took for a stranger.
+ */
+internal fun fromOwner(hasPerson: Boolean, personKey: String?, personName: String?, ownerKey: String?, ownerName: String?): Boolean {
+  if (!hasPerson) return true
+  if (personKey != null && ownerKey != null) return personKey == ownerKey
+  val name = personName?.trim().orEmpty()
+  return name.isNotEmpty() && name == ownerName?.trim()
+}
+
 internal object Extract {
   /** Owner messages: no contact lookup, one fixed id. */
   const val OWNER_ID = "owner"

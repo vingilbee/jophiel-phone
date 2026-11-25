@@ -85,7 +85,7 @@ describe('values against the backend contract', () => {
 
 /** A native module driven by hand. */
 function fakeNative(snapshot: Record<string, unknown>) {
-  let listener: ((fields: Record<string, unknown>, at: number) => void) | null = null
+  let listener: ((fields: Record<string, unknown>, at: number, force: boolean) => void) | null = null
   const calls = { startLive: 0, stopLive: 0, noteSent: [] as unknown[], background: [] as unknown[] }
   const native: SensesNative = {
     snapshot: () => ({ ...snapshot }),
@@ -102,7 +102,7 @@ function fakeNative(snapshot: Record<string, unknown>) {
     native,
     calls,
     snapshot,
-    emit: (fields: Record<string, unknown>, at: number) => listener?.(fields, at),
+    emit: (fields: Record<string, unknown>, at: number, force = false) => listener?.(fields, at, force),
   }
 }
 
@@ -475,6 +475,31 @@ describe('phase 8: now playing, the Maps trip, messages_on', () => {
   test('the same song again is no change; a new state is', () => {
     expect(changes({ media: { ...song } as never }, { media: song as never })).toEqual({})
     expect(changes({ media: { ...song, state: 'paused' } as never }, { media: song as never })).toEqual({ media: { ...song, state: 'paused' } })
+  })
+
+  test('where in the track goes along when valid, and a bad one is only left out', () => {
+    const at = { ...song, position_ms: 40_000, duration_ms: 165_000 }
+    expect(checkValue('media', at)).toEqual(at)
+    expect(checkValue('media', { ...song, position_ms: 40_000.6 })).toEqual({ ...song, position_ms: 40_001 })
+    expect(checkValue('media', { ...song, position_ms: -1, duration_ms: '3:00' })).toEqual(song)
+    expect(checkValue('media', { ...song, position_ms: 90_000_000 })).toEqual(song)
+  })
+
+  test('a forced report goes out even unchanged (her check after a command reads it)', () => {
+    let now = T0
+    const fake = fakeNative({ media: { ...song, state: 'paused', position_ms: 5_000 } })
+    const senses = new PhoneSenses(fake.native, ALL_ON, () => now)
+    const { link, frames } = fakeLink(() => senses)
+    senses.attach(link)
+    senses.setLive(true)
+    link.sendSense()
+    const paused = { ...song, state: 'paused', position_ms: 5_000 }
+    now += 20_000
+    fake.emit({ media: paused }, now)
+    expect(frames).toHaveLength(1) // unchanged: nothing
+    fake.emit({ media: paused }, now, true)
+    expect(frames).toHaveLength(2)
+    expect(frames.at(-1)).toEqual({ media: paused, observed_at: new Date(now).toISOString() })
   })
 
   test('media and navigation missing from a snapshot are unknown, not "as before"', () => {

@@ -9,6 +9,7 @@ import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 
@@ -21,12 +22,14 @@ internal object Fields {
   private const val ACTION = "expo.modules.jophielsenses.FIELD"
   private const val RECEIVER = "expo.modules.jophielsenses.FieldReceiver"
 
-  fun report(context: Context, field: String, value: JSONObject?) {
+  /** `force`: send it even when it's what was last sent (a report she waits for after a command). */
+  fun report(context: Context, field: String, value: JSONObject?, force: Boolean = false) {
     val intent = Intent(ACTION)
       .setClassName(context.packageName, RECEIVER)
       .putExtra("field", field)
       .putExtra("value", value?.toString())
       .putExtra("at", System.currentTimeMillis())
+      .putExtra("force", force)
     try {
       context.sendBroadcast(intent)
     } catch (e: Exception) {
@@ -42,9 +45,18 @@ internal object Fields {
 internal class Media(private val context: Context, private val component: ComponentName, private val handler: Handler) {
   private val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
   private var controllers: List<MediaController> = emptyList()
-  /** What was last sent; `sent` false: nothing yet since connecting (or switching on), so even "nothing playing" goes. */
+  /**
+   * What was last sent, without where in the track (a position moving on is no change); `sent`
+   * false: nothing yet since connecting (or switching on), so even "nothing playing" goes.
+   */
   private var last: String? = null
   private var sent = false
+  /** The position last sent, when (elapsed realtime), and whether it was moving then: a seek is told. */
+  private var lastPosition: Long? = null
+  private var lastPositionAt = 0L
+  private var lastMoving = false
+  /** The report she reads a moment after one of her commands (her check needs a fresh one). */
+  private val afterCommand = Runnable { changed(force = true) }
   private var started = false
   private val labels = HashMap<String, String>()
 
@@ -70,6 +82,7 @@ internal class Media(private val context: Context, private val component: Compon
   fun stop() {
     if (!started) return
     started = false
+    handler.removeCallbacks(afterCommand)
     runCatching { manager.removeOnActiveSessionsChangedListener(sessions) }
     controllers.forEach { runCatching { it.unregisterCallback(callback) } }
     controllers = emptyList()
@@ -79,6 +92,7 @@ internal class Media(private val context: Context, private val component: Compon
   fun forget() {
     last = null
     sent = false
+    lastPosition = null
   }
 
   /** Forget what was sent (switched off and on again): the next change, or `resend`, sends it. */
@@ -114,7 +128,15 @@ internal class Media(private val context: Context, private val component: Compon
     }
   }
 
-  fun nowPlaying(): JSONObject? {
+  /** What's playing, and where in the track (`position_ms` / `duration_ms`, left out when unknown). */
+  private class NowPlaying(val what: JSONObject, val positionMs: Long?, val durationMs: Long?, val moving: Boolean) {
+    fun json(): JSONObject = JSONObject(what.toString()).apply {
+      positionMs?.let { put("position_ms", it) }
+      durationMs?.let { put("duration_ms", it) }
+    }
+  }
+
+  private fun nowPlaying(): NowPlaying? {
     val c = current() ?: return null
     val metadata = c.metadata
     val title = clip(metadata?.getString(MediaMetadata.METADATA_KEY_TITLE), MAX_TITLE)
@@ -123,22 +145,55 @@ internal class Media(private val context: Context, private val component: Compon
     val artist = clip(metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST), MAX_TITLE)
       ?: clip(metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST), MAX_TITLE)
       ?: clip(metadata?.description?.subtitle?.toString(), MAX_TITLE)
-    return JSONObject()
+    val what = JSONObject()
       .put("app", clip(label(c.packageName), MAX_APP) ?: c.packageName.take(MAX_APP))
       .put("title", title)
       .put("artist", artist ?: JSONObject.NULL)
       .put("state", if (isPlaying(c)) "playing" else "paused")
+    // MediaMetadata's duration: 0 or less when the app doesn't say (a live stream).
+    val duration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.takeIf { it in 1..MAX_MS }
+    val state = c.playbackState
+    val moving = state?.state == PlaybackState.STATE_PLAYING
+    return NowPlaying(what, position(state, moving, duration), duration, moving)
   }
 
-  private fun changed() {
+  /**
+   * Where in the track now, in ms. PlaybackState's position is as of its last update; while
+   * playing it has moved on since, at the playback speed. null: the app doesn't say.
+   */
+  private fun position(state: PlaybackState?, moving: Boolean, duration: Long?): Long? {
+    if (state == null || state.position < 0) return null
+    var at = state.position
+    if (moving && state.lastPositionUpdateTime > 0) {
+      val since = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
+      if (since > 0) at += (since * state.playbackSpeed).toLong()
+    }
+    if (duration != null) at = at.coerceAtMost(duration)
+    return at.coerceIn(0L, MAX_MS)
+  }
+
+  /** `force`: send it even unchanged (the report a moment after one of her commands). */
+  private fun changed(force: Boolean = false) {
     if (!started) return
     if (!Store.enabled(context)) return
     val now = nowPlaying()
-    val text = now?.toString()
-    if (sent && text == last) return
+    val text = now?.what?.toString()
+    val clock = SystemClock.elapsedRealtime()
+    if (!force && sent && text == last && !seeked(now, clock)) return
     last = text
     sent = true
-    Fields.report(context, "media", now)
+    lastPosition = now?.positionMs
+    lastPositionAt = clock
+    lastMoving = now?.moving == true
+    Fields.report(context, "media", now?.json(), force)
+  }
+
+  /** The same track, but not where it would be by now (a seek, or previous restarting it). */
+  private fun seeked(now: NowPlaying?, clock: Long): Boolean {
+    val before = lastPosition ?: return false
+    val position = now?.positionMs ?: return false
+    val expected = before + if (lastMoving) clock - lastPositionAt else 0L
+    return Math.abs(position - expected) > SEEK_MS
   }
 
   /**
@@ -168,6 +223,18 @@ internal class Media(private val context: Context, private val component: Compon
       "previous" -> controls.skipToPrevious()
       else -> return "bad_args"
     }
+    // Her check reads the phone's next report: send one once the player has acted, even when the
+    // press changed nothing it shows (pause while paused). Several presses: one, after the last.
+    handler.removeCallbacks(afterCommand)
+    handler.postDelayed(afterCommand, AFTER_COMMAND_MS)
     return null
+  }
+
+  private companion object {
+    /** The server takes positions and durations up to a day. */
+    const val MAX_MS = 86_400_000L
+    /** Further than this from where it would be: a seek, so it's sent. */
+    const val SEEK_MS = 3_000L
+    const val AFTER_COMMAND_MS = 1_000L
   }
 }
