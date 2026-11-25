@@ -314,3 +314,15 @@ The contract above is the final one, with these specifics for the phone:
   "their phone app is too old" / "didn't accept those arguments".
 - One chat line per turn (`phone_activity`): "Used your phone in Spotify, 9 steps", "Looked at your phone's screen
   in Settings", with "(you took over)" / "(stopped at the step limit)".
+
+## Follow-up (2026-11-24, after the first real test)
+
+- **`gesture`**: several fingers at once, `fingers: [[x1, y1, x2, y2], …]` (1 to 5, screenshot pixels) moving
+  together for `ms` (100 to 2000), like `swipe` otherwise. The backend's `phone_pinch` and `phone_gesture` send it
+  (Hay Day's zoom needed a pinch).
+- **`taken_over_after`**: your touch came while her action ran, so the action did happen. She's told it happened
+  and stops. (Before, it answered `taken_over` and she said "Not done", which was wrong: in the test a Send she
+  tapped went out while she said it hadn't.) `read_screen` still answers `taken_over`.
+- **Takeover log**: each takeover logs what ended it (`stop` or a `touch` outside the banner), how long after her
+  last action started, and which action was running: `adb logcat -s JophielControl`. In the test, three turns ended
+  as taken over with no touch the user knew of, right after a tap by number or a back press.

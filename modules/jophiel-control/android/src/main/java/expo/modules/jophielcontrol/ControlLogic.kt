@@ -85,6 +85,8 @@ internal data class Request(
   val ms: Long = ControlLogic.SWIPE_DEFAULT_MS,
   val key: String? = null,
   val waitMs: Long = 0,
+  /** `gesture`: one [x1, y1, x2, y2] per finger, in screenshot pixels, all moving together for `ms`. */
+  val fingers: List<IntArray>? = null,
 )
 
 internal object ControlLogic {
@@ -108,12 +110,14 @@ internal object ControlLogic {
   const val NO_TURN_BLOCK_MS = 30_000L
   /** Touches during her own gesture and this long after aren't yours. */
   const val OWN_TOUCH_GRACE_MS = 300L
+  /** Fingers in one `gesture` (Android allows at least 10 strokes; she gets 5). */
+  const val MAX_FINGERS = 5
 
-  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "press", "end_control")
+  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "gesture", "press", "end_control")
   val DIRECTIONS = setOf("up", "down", "left", "right")
   val KEYS = setOf("back", "home", "recents", "notifications", "quick_settings")
   /** The actions that act on a given screen (its numbers or its pixels). */
-  private val ON_SCREEN = setOf("tap", "long_press", "type_text", "scroll", "tap_point", "swipe")
+  private val ON_SCREEN = setOf("tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "gesture")
 
   fun needsScreen(action: String): Boolean = action in ON_SCREEN
 
@@ -177,6 +181,21 @@ internal object ControlLogic {
           y = pixel(args["y1"]) ?: return null,
           x2 = pixel(args["x2"]) ?: return null,
           y2 = pixel(args["y2"]) ?: return null,
+          ms = if (ms == null) SWIPE_DEFAULT_MS else (whole(ms) ?: return null).coerceIn(SWIPE_MIN_MS, SWIPE_MAX_MS),
+        )
+      }
+      "gesture" -> {
+        val list = args["fingers"] as? List<*> ?: return null
+        if (list.isEmpty() || list.size > MAX_FINGERS) return null
+        val fingers = list.map { finger ->
+          val points = finger as? List<*> ?: return null
+          if (points.size != 4) return null
+          IntArray(4) { i -> pixel(points[i]) ?: return null }
+        }
+        val ms = args["ms"]
+        base.copy(
+          screen = screen,
+          fingers = fingers,
           ms = if (ms == null) SWIPE_DEFAULT_MS else (whole(ms) ?: return null).coerceIn(SWIPE_MIN_MS, SWIPE_MAX_MS),
         )
       }

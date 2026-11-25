@@ -279,6 +279,7 @@ export const CONTROL_ACTIONS: readonly string[] = [
   'scroll',
   'tap_point',
   'swipe',
+  'gesture',
   'press',
   'end_control',
 ]

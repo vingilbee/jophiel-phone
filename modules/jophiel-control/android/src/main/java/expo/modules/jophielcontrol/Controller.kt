@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import android.view.Display
 import java.util.concurrent.Executors
 
@@ -36,6 +37,13 @@ internal object Controller {
 
   private val idle = Runnable { endControl(keepScreen = true) }
 
+  /** For the takeover log: the action running (null between actions) and when her last one started. */
+  @Volatile
+  private var running: String? = null
+
+  @Volatile
+  private var lastActionAt = 0L
+
   fun perform(context: Context, action: String, args: Map<String, Any?>, done: (Answer) -> Unit) {
     executor.execute {
       val answer = try {
@@ -43,6 +51,7 @@ internal object Controller {
       } catch (e: Exception) {
         Answer("failed", "error", null)
       }
+      running = null
       done(answer)
     }
   }
@@ -70,7 +79,9 @@ internal object Controller {
 
     service.banner.show()
     restartIdle()
+    running = request.action
     var actionAt = SystemClock.uptimeMillis()
+    lastActionAt = actionAt
     if (request.action == "read_screen") {
       if (request.waitMs > 0) SystemClock.sleep(request.waitMs)
       // Nothing was done: only wait if the screen is still changing.
@@ -79,11 +90,13 @@ internal object Controller {
       Actor.run(service, request, current)?.let { return failed(it) }
     }
     settle(service, actionAt)
-    if (over(request.turn)) return refused("taken_over")
+    // Your touch came while she acted: what she did did happen (`taken_over_after`), but she stops here.
+    val acted = request.action != "read_screen"
+    if (over(request.turn)) return refused(if (acted) "taken_over_after" else "taken_over")
     val json = read(service)
     if (over(request.turn)) {
       screen = null
-      return refused("taken_over")
+      return refused(if (acted) "taken_over_after" else "taken_over")
     }
     restartIdle()
     return Answer("done", null, json)
@@ -132,8 +145,11 @@ internal object Controller {
     if (!keepScreen) screen = null
   }
 
-  /** Your touch, or Stop: the turn she was acting in is over. */
-  fun takenOver() {
+  /** Your touch, or Stop: the turn she was acting in is over. `by`: "stop" or "touch" (outside the banner). */
+  fun takenOver(by: String) {
+    // Diagnostic only (`adb logcat -s JophielControl`): what ended her turn, and when, against her own actions.
+    Log.i("JophielControl", "takeover by $by, ${SystemClock.uptimeMillis() - lastActionAt} ms after her last action started" +
+      (running?.let { " (during $it)" } ?: " (between actions)"))
     synchronized(lock) { gate.takeOver(SystemClock.elapsedRealtime()) }
     endControl(keepScreen = false)
   }

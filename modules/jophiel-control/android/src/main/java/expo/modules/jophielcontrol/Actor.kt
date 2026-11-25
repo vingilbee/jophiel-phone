@@ -47,6 +47,7 @@ internal object Actor {
       "scroll" -> scroll(service, screen!!, request)
       "tap_point" -> point(service, screen!!, request)
       "swipe" -> swipe(service, screen!!, request)
+      "gesture" -> gesture(service, screen!!, request)
       "press" -> press(service, request.key!!)
       else -> null
     }
@@ -131,6 +132,19 @@ internal object Actor {
     return if (stroke(service, from.first, from.second, to.first, to.second, request.ms)) null else "gesture_failed"
   }
 
+  /** Several fingers at once (a pinch, a two-finger swipe): one stroke each, all together. */
+  private fun gesture(service: JophielControlService, screen: Screen, request: Request): String? {
+    val fingers = request.fingers!!
+    if (fingers.size > GestureDescription.getMaxStrokeCount()) return "not_supported"
+    val builder = GestureDescription.Builder()
+    for (f in fingers) {
+      val from = ControlLogic.toScreen(f[0], f[1], screen.scale, screen.imageWidth, screen.imageHeight) ?: return "off_screen"
+      val to = ControlLogic.toScreen(f[2], f[3], screen.scale, screen.imageWidth, screen.imageHeight) ?: return "off_screen"
+      builder.addStroke(GestureDescription.StrokeDescription(path(from.first, from.second, to.first, to.second), 0, request.ms))
+    }
+    return if (dispatch(service, builder.build(), request.ms)) null else "gesture_failed"
+  }
+
   private fun press(service: AccessibilityService, key: String): String? {
     val action = when (key) {
       "back" -> AccessibilityService.GLOBAL_ACTION_BACK
@@ -144,11 +158,17 @@ internal object Actor {
 
   /** A real finger: from one point to another (the same point: a tap or long press). Blocks until it's done. */
   private fun stroke(service: JophielControlService, x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
-    val path = Path().apply {
-      moveTo(x1.coerceAtLeast(0).toFloat(), y1.coerceAtLeast(0).toFloat())
-      if (x1 != x2 || y1 != y2) lineTo(x2.coerceAtLeast(0).toFloat(), y2.coerceAtLeast(0).toFloat())
-    }
-    val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, durationMs)).build()
+    val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path(x1, y1, x2, y2), 0, durationMs)).build()
+    return dispatch(service, gesture, durationMs)
+  }
+
+  private fun path(x1: Int, y1: Int, x2: Int, y2: Int): Path = Path().apply {
+    moveTo(x1.coerceAtLeast(0).toFloat(), y1.coerceAtLeast(0).toFloat())
+    if (x1 != x2 || y1 != y2) lineTo(x2.coerceAtLeast(0).toFloat(), y2.coerceAtLeast(0).toFloat())
+  }
+
+  /** Her gesture, through Android: blocks until it's done (touches meanwhile are hers, not yours). */
+  private fun dispatch(service: JophielControlService, gesture: GestureDescription, durationMs: Long): Boolean {
     service.banner.ownGesture(durationMs)
     val done = CountDownLatch(1)
     var ok = false

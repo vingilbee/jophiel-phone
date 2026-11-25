@@ -35,6 +35,7 @@ export const ACTION_GROUP: Partial<Record<string, ActionGroup>> = {
   scroll: 'control',
   tap_point: 'control',
   swipe: 'control',
+  gesture: 'control',
   press: 'control',
   end_control: 'control',
 }

@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * your touch anywhere (or Stop) calls `onTakeover`. Touches during her own gesture and shortly
  * after aren't yours (`ownGesture`). Hidden for the moment a screenshot is taken.
  */
-internal class Banner(private val service: AccessibilityService, private val onTakeover: () -> Unit) {
+internal class Banner(private val service: AccessibilityService, private val onTakeover: (by: String) -> Unit) {
   private val main = Handler(Looper.getMainLooper())
   private val windows = service.getSystemService(WindowManager::class.java)
   private var view: View? = null
@@ -128,7 +128,7 @@ internal class Banner(private val service: AccessibilityService, private val onT
       val pad = dp(10f).toInt()
       setPadding(pad, pad / 2, pad, pad / 2)
       contentDescription = "Stop Jophiel using your phone"
-      setOnClickListener { touched() }
+      setOnClickListener { touched("stop") }
     }
     val dot = TextView(service).apply {
       text = "  ·  "
@@ -139,15 +139,15 @@ internal class Banner(private val service: AccessibilityService, private val onT
     row.addView(dot)
     row.addView(stop)
     row.setOnTouchListener { _, event ->
-      if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) touched()
+      if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) touched("touch")
       false
     }
     return row
   }
 
-  private fun touched() {
+  private fun touched(by: String) {
     if (SystemClock.uptimeMillis() < ownUntil) return
-    onTakeover()
+    onTakeover(by)
   }
 
   private fun dp(value: Float): Float = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, service.resources.displayMetrics)

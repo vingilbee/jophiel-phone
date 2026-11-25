@@ -70,6 +70,15 @@ class ControlLogicTest {
     assertEquals(listOf(1, 2, 3, 5), listOf(swipe.x, swipe.y, swipe.x2, swipe.y2))
     assertEquals(100L, swipe.ms)
 
+    val pinch = ControlLogic.parse("gesture", mapOf("screen" to "s1", "ms" to 500.0,
+      "fingers" to listOf(listOf(300.0, 700.0, 100.0, 500.0), listOf(400.0, 800.0, 600.4, 999.6))))!!
+    assertEquals(listOf(listOf(300, 700, 100, 500), listOf(400, 800, 600, 1000)), pinch.fingers!!.map { it.toList() })
+    assertEquals(500L, pinch.ms)
+    assertNull(ControlLogic.parse("gesture", mapOf("screen" to "s1", "fingers" to emptyList<Any>())))
+    assertNull(ControlLogic.parse("gesture", mapOf("screen" to "s1", "fingers" to listOf(listOf(1.0, 2.0, 3.0)))))
+    assertNull(ControlLogic.parse("gesture", mapOf("screen" to "s1", "fingers" to List(6) { listOf(1.0, 1.0, 1.0, 1.0) })))
+    assertNull(ControlLogic.parse("gesture", mapOf("fingers" to listOf(listOf(1.0, 1.0, 1.0, 1.0)))))
+
     assertEquals("home", ControlLogic.parse("press", mapOf("key" to "home"))!!.key)
     assertNull(ControlLogic.parse("press", mapOf("key" to "power")))
     assertNotNull(ControlLogic.parse("end_control", emptyMap()))

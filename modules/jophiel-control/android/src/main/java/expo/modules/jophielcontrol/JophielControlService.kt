@@ -25,7 +25,7 @@ class JophielControlService : AccessibilityService() {
 
   override fun onServiceConnected() {
     super.onServiceConnected()
-    banner = Banner(this) { Controller.takenOver() }
+    banner = Banner(this) { by -> Controller.takenOver(by) }
     instance = this
   }
 
