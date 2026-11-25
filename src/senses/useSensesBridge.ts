@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { AppState } from 'react-native'
+import { setControlAllowed } from '@/actions'
 import { onSignOut } from '@/auth/session'
 import { getToken } from '@/auth/token'
 import { clearNotificationsReporting, configureNotifications, notificationsAvailable, setNotificationsReporting } from '@/notifications'
@@ -69,6 +70,17 @@ export function useSensesBridge() {
     phoneSenses.setLocal({ messages_on: messagesOn }, !firstMessages.current)
     firstMessages.current = false
   }, [settings.senses.notifications, messagesOn])
+
+  // Phase 9: the master switch and Phone control, mirrored natively so switching either off ends
+  // her control at once (banner gone, screen dropped), not just at her next action.
+  // Also phone state (`control_on`): off wipes her short-term screen memory on the backend.
+  const controlOn = settings.actionsEnabled && settings.actionGroups.control
+  const firstControl = useRef(true)
+  useEffect(() => {
+    setControlAllowed(controlOn)
+    phoneSenses.setLocal({ control_on: controlOn }, !firstControl.current)
+    firstControl.current = false
+  }, [controlOn])
 
   useEffect(() => {
     if (!sensesAvailable && !notificationsAvailable) return

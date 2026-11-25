@@ -3,7 +3,7 @@ import * as Battery from 'expo-battery'
 import * as Device from 'expo-device'
 import * as IntentLauncher from 'expo-intent-launcher'
 import { Linking, PermissionsAndroid, Platform } from 'react-native'
-import { canDrawOverlays, canUseFullScreenIntent, hasDndAccess } from '@/actions'
+import { accessibilityEnabled, canDrawOverlays, canUseFullScreenIntent, hasDndAccess } from '@/actions'
 import { notificationAccess } from '@/notifications'
 
 /** Every state here is read from Android each time, never remembered. */
@@ -239,4 +239,12 @@ export async function requestContactsPermission(): Promise<PermissionState> {
   } catch {
     return 'unknown'
   }
+}
+
+// ---- Phase 9: phone control ----
+
+/** Jophiel turned on in Settings → Accessibility (she can read the screen and act on it while you talk). */
+export function accessibilityPermission(): PermissionState {
+  const enabled = accessibilityEnabled()
+  return enabled === null ? 'unknown' : enabled ? 'granted' : 'denied'
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Window events only, to know when the screen has settled after an action. Interactive windows (app,
+  system dialogs, notification shade), view ids and not-important views, so she sees what you see.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+  android:description="@string/jophiel_control_description"
+  android:summary="@string/jophiel_control_summary"
+  android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeWindowsChanged"
+  android:accessibilityFeedbackType="feedbackGeneric"
+  android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews"
+  android:canRetrieveWindowContent="true"
+  android:canPerformGestures="true"
+  android:canTakeScreenshot="true"
+  android:notificationTimeout="50" />

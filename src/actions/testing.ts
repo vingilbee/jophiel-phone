@@ -30,6 +30,7 @@ export function recordingDevice(calls: [string, unknown[]][]): DeviceDeps {
     openLink: answer('openLink'),
     playMusic: answer('playMusic'),
     whatsappDraft: answer('whatsappDraft'),
+    control: answer('control'),
   }
 }
 

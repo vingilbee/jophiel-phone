@@ -2,6 +2,7 @@ import { destinationTitle, mapsUrl } from './maps'
 import type { Place } from '@/senses/places'
 import { ACTION_GROUP, type ActionGroups } from './groups'
 import {
+  CONTROL_ACTIONS,
   alarmArgs,
   dndArgs,
   draftArgs,
@@ -20,6 +21,7 @@ import {
   type AlarmArgs,
   type MediaCommand,
   type PhoneAction,
+  type PhoneScreen,
   type PositionData,
   type ReplyArgs,
   type RingerMode,
@@ -34,6 +36,8 @@ export interface DeviceAnswer {
   status: 'done' | 'notified' | 'refused' | 'failed'
   reason: string | null
   data?: { opened?: string; target?: 'contact' | 'picker' } | null
+  /** Phase 9: the screen after the action settled (`done` only). */
+  screen?: PhoneScreen | null
 }
 
 /** Phase 8's device actions (modules/jophiel-actions and jophiel-notifications); args already checked. */
@@ -50,6 +54,8 @@ export interface DeviceDeps {
   openLink: (url: string) => Promise<DeviceAnswer>
   playMusic: (query: string) => Promise<DeviceAnswer>
   whatsappDraft: (to: string | null, text: string) => Promise<DeviceAnswer>
+  /** Phase 9: one phone-control action, args as she sent them (modules/jophiel-control checks them). */
+  control: (action: string, args: Record<string, unknown>) => Promise<DeviceAnswer>
 }
 
 /** The switches an action is checked against (read when it arrives). */
@@ -105,7 +111,8 @@ function answered(answer: DeviceAnswer): ActionResult {
   if (answer.reason) result.reason = answer.reason
   // The backend takes `data` only with `done` (a `notified` open_app carrying `opened` is rejected whole).
   if (answer.status !== 'done') return result
-  if (answer.data?.opened) result.data = { opened: answer.data.opened }
+  if (answer.screen) result.data = { screen: answer.screen }
+  else if (answer.data?.opened) result.data = { opened: answer.data.opened }
   else if (answer.data?.target) result.data = { target: answer.data.target }
   return result
 }
@@ -173,7 +180,15 @@ export async function runAction(action: PhoneAction, deps: ActionDeps): Promise<
   return result
 }
 
+/** Phase 9: every action but `end_control` answers `done` with the screen after it; without one it failed. */
+async function control(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
+  const answer = await deps.device.control(action.action, action.args)
+  if (answer.status === 'done' && action.action !== 'end_control' && !answer.screen) return { status: 'failed', reason: 'error' }
+  return answered(answer)
+}
+
 function perform(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
+  if (CONTROL_ACTIONS.includes(action.action)) return control(action, deps)
   switch (action.action) {
     case 'navigate_to':
       return navigate(action, deps)

@@ -3,7 +3,7 @@ import * as Application from 'expo-application'
 import { useRouter } from 'expo-router'
 import { Alert, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { actionsAvailable, openDndSettings, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
+import { actionsAvailable, controlAvailable, openAccessibilitySettings, openDndSettings, openFullScreenIntentSettings, openOverlaySettings } from '@/actions'
 import { ACTION_GROUPS, type ActionGroup } from '@/actions/groups'
 import { notificationsAvailable, openNotificationAccessSettings } from '@/notifications'
 import { fetchCapabilities } from '@/api/auth'
@@ -37,6 +37,11 @@ const ACTION_GROUP_TEXT: Record<ActionGroup, { title: string; on: string; off: s
   },
   alarms: { title: 'Alarms & timers', on: 'Sets them in the clock app (she can’t see or delete them afterwards).', off: 'Off: she can’t set alarms or timers.' },
   opening: { title: 'Opening apps', on: 'Any app or link, and Spotify by song name, only while she’s talking with you.', off: 'Off: she can’t open apps, links or Spotify.' },
+  control: {
+    title: 'Phone control',
+    on: 'She sees your screen and taps, types and scrolls, only while she’s talking with you. A banner shows while she works; touch the screen to stop her.',
+    off: 'Off: she can’t see or use your screen.',
+  },
 }
 
 const PHASE_LABEL: Record<ConnectionPhase, string> = {
@@ -261,6 +266,20 @@ export default function Settings() {
                   : 'Off. Tap to allow it (Android 13+: allow restricted settings in App info first).'
             }
             onPress={() => openNotificationAccessSettings()}
+          />
+        ) : null}
+        {controlAvailable ? (
+          <ListRow
+            icon="gesture-tap"
+            title="Accessibility"
+            supporting={
+              permissions.accessibility === 'granted'
+                ? 'On: phone control works (while she’s talking with you).'
+                : permissions.accessibility === 'unknown'
+                  ? 'Checking…'
+                  : 'Off. Tap to turn Jophiel on (Android 13+: allow restricted settings in App info first). Samsung turns it off after a crash or reinstall.'
+            }
+            onPress={() => openAccessibilitySettings()}
           />
         ) : null}
         {actionsAvailable ? (

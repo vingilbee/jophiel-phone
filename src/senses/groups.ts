@@ -22,10 +22,11 @@ export const GROUP_FIELDS: Record<SenseGroup, readonly PhoneField[]> = {
 
 const FIELD_GROUP = Object.fromEntries(
   SENSE_GROUPS.flatMap((group) => GROUP_FIELDS[group].map((field) => [field, group] as const)),
-) as Record<PhoneField, SenseGroup>
+) as Partial<Record<PhoneField, SenseGroup>>
 
-export function groupOf(field: PhoneField): SenseGroup {
-  return FIELD_GROUP[field]
+/** Null: not a sense, so no sense switch holds it back (`control_on`, a setting she must always know). */
+export function groupOf(field: PhoneField): SenseGroup | null {
+  return FIELD_GROUP[field] ?? null
 }
 
 /** All on by default (owner, 2026-11-21). */
