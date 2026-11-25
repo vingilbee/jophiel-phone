@@ -335,3 +335,26 @@ describe('phone activity lines (phase 7)', () => {
     expect(s.activeTurns).toEqual(['t1'])
   })
 })
+
+describe('words while her hands are on the phone', () => {
+  test('a message that joins her turn leaves her reply streaming, and its own turn settles without a reply', () => {
+    let s = run(initialChatState, { type: 'token', turn_id: 'work', message_id: 'r1', content: 'Deploying the ' })
+    s = enqueue(s, 'say')
+    s = run(
+      s,
+      { type: 'ack', turn_id: 'say', user_message_id: 'u2', conversation_id: 'c1', joins: 'work' },
+      { type: 'token', turn_id: 'work', message_id: 'r1', content: 'heroes now.' },
+      { type: 'done', turn_id: 'say', status: 'completed', joined: 'work' },
+    )
+    expect(s.live.map((i) => i.text)).toEqual(['Deploying the heroes now.'])
+    expect(s.messages.map((m) => [m.role, m.text])).toEqual([['user', 'hi']])
+    expect(s.activeTurns).not.toContain('say')
+  })
+
+  test('a spoken message that joins her turn shows as yours without settling hers', () => {
+    let s = run(initialChatState, { type: 'token', turn_id: 'work', message_id: 'r1', content: 'Watching' })
+    s = run(s, { type: 'transcript', turn_id: 'say', content: 'pop the warden', joins: 'work' })
+    expect(s.live.map((i) => i.text)).toEqual(['Watching'])
+    expect(s.messages.map((m) => [m.role, m.text])).toEqual([['user', 'pop the warden']])
+  })
+})

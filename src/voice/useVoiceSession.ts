@@ -171,6 +171,11 @@ interface Options {
     reportHeard: (heardChars: number) => string | null
     /** Timing marks for the turn just ended (measurement only). */
     reportVoiceLatency?: (report: VoiceLatencyReport) => void
+    /**
+     * Her hands are on the phone in a running turn: your words go into it (the server decides when
+     * the utterance ends), so talking at length over her is never committed as a barge-in.
+     */
+    handsBusy?: () => boolean
   }
 }
 
@@ -389,9 +394,15 @@ export function useVoiceSession(opts: Options): VoiceSession {
     // Safety net: if nothing at all comes back, don't think forever. Give up on the turn (fencing
     // any late reply), say so, and listen again.
     const turnEpoch = epochRef.current
-    const noAnswer = setTimeout(() => {
+    let noAnswer: Timer
+    const giveUp = () => {
       if (epochRef.current !== turnEpoch || stateRef.current !== 'thinking' || audioArrivedRef.current) return
       if (holdRef.current) return
+      // Working on the phone can take minutes with nothing to say: that's not "no answer".
+      if (optsRef.current.socket.handsBusy?.()) {
+        noAnswer = setTimeout(giveUp, NO_ANSWER_TIMEOUT_MS)
+        return
+      }
       epochRef.current += 1
       const { conversationId, socket } = optsRef.current
       if (mutedRef.current) {
@@ -408,7 +419,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
       }
       setError('No answer came back. Please try again.')
       enterListening(false)
-    }, NO_ANSWER_TIMEOUT_MS)
+    }
+    noAnswer = setTimeout(giveUp, NO_ANSWER_TIMEOUT_MS)
     replyDoneRef.current = false
     playbackDoneRef.current = false
     const epoch = epochRef.current
@@ -675,7 +687,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
       if (
         hold?.stage === 'listening' &&
         vad?.speaking &&
-        vad.stats.speechMs >= HOLD_COMMIT_SPEECH_MS
+        vad.stats.speechMs >= HOLD_COMMIT_SPEECH_MS &&
+        !optsRef.current.socket.handsBusy?.()
       ) {
         commitHold()
       }

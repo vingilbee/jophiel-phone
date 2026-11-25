@@ -88,6 +88,9 @@ export class VoiceChannel {
   private audioTurnId: string | null = null
   // The turn a finished utterance is waiting on, so turning voice off can settle it.
   private voiceReplyTurnId: string | null = null
+  // Turns whose hands are on the phone right now (`hands` frames): your words go into such a turn
+  // instead of stopping it, so a long utterance over it isn't committed as a barge-in.
+  private handsTurns = new Set<string>()
 
   constructor(private readonly io: VoiceIo) {}
 
@@ -146,8 +149,15 @@ export class VoiceChannel {
         return false
       case 'transcript':
         return true
+      case 'hands':
+        if (frame.open) this.handsTurns.add(frame.turn_id)
+        else this.handsTurns.delete(frame.turn_id)
+        return false
       default:
         break
+    }
+    if ((frame.type === 'done' || frame.type === 'stopped' || frame.type === 'error') && frame.turn_id) {
+      this.handsTurns.delete(frame.turn_id)
     }
 
     // A cut-off turn's late text stays out of the chat (its bubble was settled when it was cut).
@@ -194,6 +204,7 @@ export class VoiceChannel {
   handleClose() {
     this.events.onDisconnect?.()
     this.held = null
+    this.handsTurns.clear()
     const lost = [this.pending?.turnId, this.audioTurnId].filter((id): id is string => !!id)
     this.silencedTurns = [...this.silencedTurns, ...lost].slice(-16)
     this.dropAudio = true
@@ -287,6 +298,11 @@ export class VoiceChannel {
     this.dropAudio = true
     this.io.send({ type: 'voice_cancel' })
     this.voiceTurnId = null
+  }
+
+  /** Her hands are on the phone in a running turn: what you say goes into it rather than stopping it. */
+  handsBusy(): boolean {
+    return this.handsTurns.size > 0
   }
 
   /** Interrupt the reply currently streaming. */
