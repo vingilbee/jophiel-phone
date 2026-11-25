@@ -124,6 +124,21 @@ class NotificationLogicTest {
   }
 
   @Test
+  fun aReplyRepostedUnderYourNameIsYours() {
+    // WhatsApp after a reply-button send: the reply under a Person named like the user, no keys.
+    assertTrue(fromOwner(true, null, "You", null, "You"))
+    assertTrue(fromOwner(true, null, " You ", "me", "You"))
+    assertTrue(fromOwner(false, null, null, "me", "You"))
+    // Keys on both sides decide, whatever the names.
+    assertTrue(fromOwner(true, "me", "Vincent", "me", "You"))
+    assertFalse(fromOwner(true, "rina", "You", "me", "You"))
+    // Someone else, or nothing to tell by.
+    assertFalse(fromOwner(true, null, "Rina", null, "You"))
+    assertFalse(fromOwner(true, null, null, null, null))
+    assertFalse(fromOwner(true, null, "", null, ""))
+  }
+
+  @Test
   fun theSameMessageTwiceHasOneEventId() {
     val first = Extract.posted(chat, ids, 1, zone, null) { null }
     val second = Extract.posted(chat.copy(messages = listOf(rina, rina.copy(text = "?", at = rina.at + 5))), ids, 2, zone, null) { null }

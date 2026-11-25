@@ -299,11 +299,12 @@ class JophielNotificationListener : NotificationListenerService() {
     val extras = n.extras
     val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
     val ownerKey = style?.user?.key
+    val ownerName = style?.user?.name?.toString()
     val messages = style?.messages.orEmpty().mapNotNull { m ->
       val text = m.text?.toString() ?: return@mapNotNull null
       val person = m.person
-      val fromOwner = person == null || (ownerKey != null && person.key == ownerKey)
-      RawMessage(person?.name?.toString(), person?.uri, text, m.timestamp, fromOwner)
+      val mine = fromOwner(person != null, person?.key, person?.name?.toString(), ownerKey, ownerName)
+      RawMessage(if (mine) null else person?.name?.toString(), person?.uri, text, m.timestamp, mine)
     }
     val text = messages.lastOrNull()?.text
       ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
@@ -329,7 +330,7 @@ class JophielNotificationListener : NotificationListenerService() {
       canReply = replyAction(n) != null,
       postedAt = sbn.postTime,
     )
-    return raw to style?.user?.name?.toString()
+    return raw to ownerName
   }
 
   // ---- Replying through the reply button ----
