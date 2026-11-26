@@ -79,6 +79,17 @@ class ControlLogicTest {
     assertNull(ControlLogic.parse("gesture", mapOf("screen" to "s1", "fingers" to List(6) { listOf(1.0, 1.0, 1.0, 1.0) })))
     assertNull(ControlLogic.parse("gesture", mapOf("fingers" to listOf(listOf(1.0, 1.0, 1.0, 1.0)))))
 
+    val taps = ControlLogic.parse("tap_points", mapOf("screen" to "s1", "gap_ms" to 5000.0,
+      "points" to listOf(listOf(100.0, 900.0), listOf(120.4, 950.6))))!!
+    assertEquals(listOf(listOf(100, 900), listOf(120, 951)), taps.points!!.map { it.toList() })
+    assertEquals(ControlLogic.TAP_GAP_MAX_MS, taps.gapMs)
+    assertEquals(ControlLogic.TAP_GAP_DEFAULT_MS, ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to listOf(listOf(1.0, 2.0))))!!.gapMs)
+    assertNull(ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to emptyList<Any>())))
+    assertNull(ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to listOf(listOf(1.0, 2.0, 3.0)))))
+    assertNull(ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to List(21) { listOf(1.0, 1.0) })))
+    assertNull(ControlLogic.parse("tap_points", mapOf("points" to listOf(listOf(1.0, 1.0)))))
+    assertTrue(ControlLogic.needsScreen("tap_points"))
+
     assertEquals("home", ControlLogic.parse("press", mapOf("key" to "home"))!!.key)
     assertNull(ControlLogic.parse("press", mapOf("key" to "power")))
     assertNotNull(ControlLogic.parse("end_control", emptyMap()))

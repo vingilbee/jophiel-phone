@@ -87,7 +87,9 @@ internal object Controller {
       // Nothing was done: only wait if the screen is still changing.
       actionAt = SystemClock.uptimeMillis() - ControlLogic.QUIET_MS
     } else {
-      Actor.run(service, request, current)?.let { return failed(it) }
+      Actor.run(service, request, current) { over(request.turn) }?.let { return failed(it) }
+      // A run of taps can take seconds: the screen settles from its last tap.
+      if (request.action == "tap_points") actionAt = SystemClock.uptimeMillis()
     }
     settle(service, actionAt)
     // Your touch came while she acted: what she did did happen (`taken_over_after`), but she stops here.

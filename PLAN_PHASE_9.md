@@ -43,6 +43,7 @@ her understand the screen (icons without labels, layout, images).
 | `type_text` | `screen`, `n`, `text`, `enter?` (press the keyboard's go / send / search key after) | `screen` |
 | `scroll` | `screen`, `direction` up / down / left / right, `n?` (the list to scroll; default the biggest one) | `screen` |
 | `tap_point` | `screen`, `x`, `y` (pixels of that screenshot) | `screen` |
+| `tap_points` | `screen`, `points` ([x, y] each, 1–20), `gap_ms` (0–1000, default 150): tapped in order, settle and read once after the last | `screen` |
 | `swipe` | `screen`, `x1`, `y1`, `x2`, `y2`, `ms?` (100–2000) | `screen` |
 | `press` | `key`: back / home / recents / notifications / quick_settings | `screen` |
 | `end_control` | — | (nothing; hides the banner) |

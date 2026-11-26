@@ -87,6 +87,9 @@ internal data class Request(
   val waitMs: Long = 0,
   /** `gesture`: one [x1, y1, x2, y2] per finger, in screenshot pixels, all moving together for `ms`. */
   val fingers: List<IntArray>? = null,
+  /** `tap_points`: one [x, y] per tap, in screenshot pixels, tapped one after another `gapMs` apart. */
+  val points: List<IntArray>? = null,
+  val gapMs: Long = ControlLogic.TAP_GAP_DEFAULT_MS,
 )
 
 internal object ControlLogic {
@@ -99,6 +102,10 @@ internal object ControlLogic {
   const val JPEG_QUALITY = 70
   const val MAX_WAIT_MS = 5_000L
   const val SWIPE_DEFAULT_MS = 300L
+  /** `tap_points`: at most this many taps in one action, this far apart by default (0 to `TAP_GAP_MAX_MS`). */
+  const val MAX_POINTS = 20
+  const val TAP_GAP_DEFAULT_MS = 150L
+  const val TAP_GAP_MAX_MS = 1_000L
   const val SWIPE_MIN_MS = 100L
   const val SWIPE_MAX_MS = 2_000L
   /** The screen counts as settled after this long without a window event… */
@@ -114,11 +121,11 @@ internal object ControlLogic {
   /** Fingers in one `gesture` (Android allows at least 10 strokes; she gets 5). */
   const val MAX_FINGERS = 5
 
-  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "gesture", "press", "end_control")
+  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "tap_points", "swipe", "gesture", "press", "end_control")
   val DIRECTIONS = setOf("up", "down", "left", "right")
   val KEYS = setOf("back", "home", "recents", "notifications", "quick_settings")
   /** The actions that act on a given screen (its numbers or its pixels). */
-  private val ON_SCREEN = setOf("tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "gesture")
+  private val ON_SCREEN = setOf("tap", "long_press", "type_text", "scroll", "tap_point", "tap_points", "swipe", "gesture")
 
   fun needsScreen(action: String): Boolean = action in ON_SCREEN
 
@@ -174,6 +181,21 @@ internal object ControlLogic {
         base.copy(screen = screen, direction = direction, n = if (n == null) null else number(n) ?: return null)
       }
       "tap_point" -> base.copy(screen = screen, x = pixel(args["x"]) ?: return null, y = pixel(args["y"]) ?: return null)
+      "tap_points" -> {
+        val list = args["points"] as? List<*> ?: return null
+        if (list.isEmpty() || list.size > MAX_POINTS) return null
+        val points = list.map { point ->
+          val xy = point as? List<*> ?: return null
+          if (xy.size != 2) return null
+          IntArray(2) { i -> pixel(xy[i]) ?: return null }
+        }
+        val gap = args["gap_ms"]
+        base.copy(
+          screen = screen,
+          points = points,
+          gapMs = if (gap == null) TAP_GAP_DEFAULT_MS else (whole(gap) ?: return null).coerceIn(0, TAP_GAP_MAX_MS),
+        )
+      }
       "swipe" -> {
         val ms = args["ms"]
         base.copy(

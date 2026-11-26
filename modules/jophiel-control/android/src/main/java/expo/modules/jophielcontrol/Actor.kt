@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import java.util.concurrent.CountDownLatch
@@ -39,13 +40,15 @@ internal object Actor {
   private const val LONG_PRESS_MS = 700L
   private val main = Handler(Looper.getMainLooper())
 
-  fun run(service: JophielControlService, request: Request, screen: Screen?): String? {
+  /** `halted`: true once the turn is over (Stop on the banner): a run of taps stops between taps. */
+  fun run(service: JophielControlService, request: Request, screen: Screen?, halted: () -> Boolean = { false }): String? {
     return when (request.action) {
       "tap" -> tap(service, numbered(screen, request) ?: return "element_gone", long = false)
       "long_press" -> tap(service, numbered(screen, request) ?: return "element_gone", long = true)
       "type_text" -> type(numbered(screen, request) ?: return "element_gone", request.text.orEmpty(), request.enter)
       "scroll" -> scroll(service, screen!!, request)
       "tap_point" -> point(service, screen!!, request)
+      "tap_points" -> points(service, screen!!, request, halted)
       "swipe" -> swipe(service, screen!!, request)
       "gesture" -> gesture(service, screen!!, request)
       "press" -> press(service, request.key!!)
@@ -124,6 +127,22 @@ internal object Actor {
   private fun point(service: JophielControlService, screen: Screen, request: Request): String? {
     val (x, y) = ControlLogic.toScreen(request.x!!, request.y!!, screen.scale, screen.imageWidth, screen.imageHeight) ?: return "off_screen"
     return if (stroke(service, x, y, x, y, TAP_MS)) null else "gesture_failed"
+  }
+
+  /**
+   * Several taps one after another, `gapMs` apart, with no settling or reading between them (a game: troops
+   * along an edge). Every point is checked first: one off the picture and none is tapped.
+   */
+  private fun points(service: JophielControlService, screen: Screen, request: Request, halted: () -> Boolean): String? {
+    val taps = request.points!!.map { ControlLogic.toScreen(it[0], it[1], screen.scale, screen.imageWidth, screen.imageHeight) ?: return "off_screen" }
+    taps.forEachIndexed { i, (x, y) ->
+      if (i > 0) {
+        if (halted()) return null
+        if (request.gapMs > 0) SystemClock.sleep(request.gapMs)
+      }
+      if (!stroke(service, x, y, x, y, TAP_MS)) return "gesture_failed"
+    }
+    return null
   }
 
   private fun swipe(service: JophielControlService, screen: Screen, request: Request): String? {
