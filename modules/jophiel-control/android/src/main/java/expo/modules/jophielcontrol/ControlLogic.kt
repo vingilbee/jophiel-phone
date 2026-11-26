@@ -87,6 +87,9 @@ internal data class Request(
   val waitMs: Long = 0,
   /** `gesture`: one [x1, y1, x2, y2] per finger, in screenshot pixels, all moving together for `ms`. */
   val fingers: List<IntArray>? = null,
+  /** `tap_points`: one [x, y] per tap, in screenshot pixels, tapped one after another `gapMs` apart. */
+  val points: List<IntArray>? = null,
+  val gapMs: Long = ControlLogic.TAP_GAP_DEFAULT_MS,
 )
 
 internal object ControlLogic {
@@ -94,10 +97,19 @@ internal object ControlLogic {
   const val MAX_CHARS = 12_000
   const val MAX_LABEL = 300
   const val MAX_TYPED = 4_000
-  const val IMAGE_WIDTH = 720
+  /** The screenshot's short edge: 720 px wide in portrait, 720 px tall in landscape. */
+  const val IMAGE_SHORT_EDGE = 720
+  /** The coordinate grid (`wantsGrid`): a line every this many picture pixels, labelled at the edges. */
+  const val GRID_STEP = 100
+  private const val GRID_MAX_ITEMS = 3
+  private const val GRID_COVER_SHARE = 0.5
   const val JPEG_QUALITY = 70
   const val MAX_WAIT_MS = 5_000L
   const val SWIPE_DEFAULT_MS = 300L
+  /** `tap_points`: at most this many taps in one action, this far apart by default (0 to `TAP_GAP_MAX_MS`). */
+  const val MAX_POINTS = 20
+  const val TAP_GAP_DEFAULT_MS = 150L
+  const val TAP_GAP_MAX_MS = 1_000L
   const val SWIPE_MIN_MS = 100L
   const val SWIPE_MAX_MS = 2_000L
   /** The screen counts as settled after this long without a window event… */
@@ -113,11 +125,11 @@ internal object ControlLogic {
   /** Fingers in one `gesture` (Android allows at least 10 strokes; she gets 5). */
   const val MAX_FINGERS = 5
 
-  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "gesture", "press", "end_control")
+  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "tap_points", "swipe", "gesture", "press", "end_control")
   val DIRECTIONS = setOf("up", "down", "left", "right")
   val KEYS = setOf("back", "home", "recents", "notifications", "quick_settings")
   /** The actions that act on a given screen (its numbers or its pixels). */
-  private val ON_SCREEN = setOf("tap", "long_press", "type_text", "scroll", "tap_point", "swipe", "gesture")
+  private val ON_SCREEN = setOf("tap", "long_press", "type_text", "scroll", "tap_point", "tap_points", "swipe", "gesture")
 
   fun needsScreen(action: String): Boolean = action in ON_SCREEN
 
@@ -173,6 +185,21 @@ internal object ControlLogic {
         base.copy(screen = screen, direction = direction, n = if (n == null) null else number(n) ?: return null)
       }
       "tap_point" -> base.copy(screen = screen, x = pixel(args["x"]) ?: return null, y = pixel(args["y"]) ?: return null)
+      "tap_points" -> {
+        val list = args["points"] as? List<*> ?: return null
+        if (list.isEmpty() || list.size > MAX_POINTS) return null
+        val points = list.map { point ->
+          val xy = point as? List<*> ?: return null
+          if (xy.size != 2) return null
+          IntArray(2) { i -> pixel(xy[i]) ?: return null }
+        }
+        val gap = args["gap_ms"]
+        base.copy(
+          screen = screen,
+          points = points,
+          gapMs = if (gap == null) TAP_GAP_DEFAULT_MS else (whole(gap) ?: return null).coerceIn(0, TAP_GAP_MAX_MS),
+        )
+      }
       "swipe" -> {
         val ms = args["ms"]
         base.copy(
@@ -229,8 +256,38 @@ internal object ControlLogic {
   fun settled(now: Long, actionAt: Long, lastEventAt: Long): Boolean =
     now - maxOf(actionAt, lastEventAt) >= QUIET_MS || now - actionAt >= SETTLE_MAX_MS
 
-  /** Screenshot width (720, or the screen's own when it's narrower) over the real width. */
-  fun scaleFor(screenWidth: Int): Double = if (screenWidth > IMAGE_WIDTH) IMAGE_WIDTH.toDouble() / screenWidth else 1.0
+  /**
+   * Screenshot size over the real size: the short edge comes out 720 (or the screen's own when it's
+   * smaller), whichever way the phone is held. Scaling by the width made a landscape game ~720x330,
+   * too small to point at its buttons.
+   */
+  fun scaleFor(screenWidth: Int, screenHeight: Int): Double {
+    val short = minOf(screenWidth, screenHeight)
+    return if (short > IMAGE_SHORT_EDGE) IMAGE_SHORT_EDGE.toDouble() / short else 1.0
+  }
+
+  /**
+   * Whether her picture gets a coordinate grid: when there's (almost) nothing numbered to act on, she taps by
+   * pixel, and a point is read far better off labelled lines than guessed on a bare picture. That's no numbered
+   * item, or only a few with one covering most of the picture (a game drawn as one big view).
+   */
+  fun wantsGrid(items: List<Item>, scale: Double, imageWidth: Int, imageHeight: Int): Boolean {
+    val numbered = items.filter { it.n != null }
+    if (numbered.isEmpty()) return true
+    if (numbered.size > GRID_MAX_ITEMS) return false
+    val picture = imageWidth.toLong() * imageHeight
+    if (picture <= 0) return false
+    return numbered.any { item ->
+      val b = item.box.scaled(scale)
+      val w = (minOf(b.right, imageWidth) - maxOf(b.left, 0)).coerceAtLeast(0)
+      val h = (minOf(b.bottom, imageHeight) - maxOf(b.top, 0)).coerceAtLeast(0)
+      w.toLong() * h >= picture * GRID_COVER_SHARE
+    }
+  }
+
+  /** Where the grid's lines sit along one edge of the picture: every `GRID_STEP` pixels, inside it. */
+  fun gridLines(size: Int, step: Int = GRID_STEP): List<Int> =
+    if (size <= 0 || step <= 0) emptyList() else (step until size step step).toList()
 
   /** A screenshot pixel to a real screen pixel; null when it's outside the screenshot (`off_screen`). */
   fun toScreen(x: Int, y: Int, scale: Double, imageWidth: Int, imageHeight: Int): Pair<Int, Int>? {
@@ -455,6 +512,7 @@ internal object ControlLogic {
     imageMissing: String?,
     built: Built,
     scale: Double,
+    grid: Int? = null,
   ): String {
     val out = StringBuilder(256 + (jpegBase64?.length ?: 0))
     out.append("{\"id\":").append(quote(id))
@@ -462,7 +520,8 @@ internal object ControlLogic {
     out.append(",\"package\":").append(packageName?.let(::quote) ?: "null")
     out.append(",\"keyboard\":").append(keyboard)
     out.append(",\"image\":")
-    if (jpegBase64 != null) out.append("{\"jpeg_base64\":").append(quote(jpegBase64)).append(",\"width\":$imageWidth,\"height\":$imageHeight}")
+    if (jpegBase64 != null) out.append("{\"jpeg_base64\":").append(quote(jpegBase64)).append(",\"width\":$imageWidth,\"height\":$imageHeight")
+      .append(if (grid != null) ",\"grid\":$grid}" else "}")
     else out.append("null")
     out.append(",\"image_missing\":").append(imageMissing?.let(::quote) ?: "null")
     out.append(",\"items\":[")
@@ -477,7 +536,7 @@ internal object ControlLogic {
 }
 
 /**
- * Who's in charge, per reply turn. Your touch takes over the turn she was acting in: every further
+ * Who's in charge, per reply turn. Stop on the banner takes over the turn she was acting in: every further
  * action of that turn answers `taken_over`. A turn older than the newest one seen is over too (your
  * new words started another). Without a `turn`, a takeover blocks turn-less actions for 30 s.
  */
@@ -512,7 +571,7 @@ internal class TurnGate(private val noTurnBlockMs: Long = ControlLogic.NO_TURN_B
     return turn in takenOver || (turn in seen && seen.last() != turn)
   }
 
-  /** You touched the screen (or tapped Stop): the current turn is over. */
+  /** You tapped Stop: the current turn is over. */
   fun takeOver(now: Long) {
     val turn = current
     if (turn == null) {

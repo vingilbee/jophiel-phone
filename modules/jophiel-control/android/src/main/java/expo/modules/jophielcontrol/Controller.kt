@@ -71,7 +71,7 @@ internal object Controller {
     val service = JophielControlService.instance ?: return refused("no_accessibility")
     if (!synchronized(lock) { gate.admit(request.turn, SystemClock.elapsedRealtime()) }) return refused("taken_over")
     if (context.getSystemService(PowerManager::class.java)?.isInteractive == false) return refused("screen_off")
-    // Unlocked only: with nobody looking at the screen, the banner and your touch can't stop her.
+    // Unlocked only: with nobody looking at the screen, the banner's Stop can't stop her.
     if (context.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true) return refused("locked")
     if (!ControlLogic.allowedInFront(request, ScreenReader.frontPackage(service), context.packageName)) return refused("own_app")
     val current = screen
@@ -87,7 +87,9 @@ internal object Controller {
       // Nothing was done: only wait if the screen is still changing.
       actionAt = SystemClock.uptimeMillis() - ControlLogic.QUIET_MS
     } else {
-      Actor.run(service, request, current)?.let { return failed(it) }
+      Actor.run(service, request, current) { over(request.turn) }?.let { return failed(it) }
+      // A run of taps can take seconds: the screen settles from its last tap.
+      if (request.action == "tap_points") actionAt = SystemClock.uptimeMillis()
     }
     settle(service, actionAt)
     // Your touch came while she acted: what she did did happen (`taken_over_after`), but she stops here.
@@ -113,13 +115,13 @@ internal object Controller {
     val reading = ScreenReader.read(service)
     val built = ControlLogic.build(reading.nodes)
     val size = displaySize(service)
-    val scale = ControlLogic.scaleFor(size.x)
+    val scale = ControlLogic.scaleFor(size.x, size.y)
     val shot = Screenshot.take(service, built.items, scale, reading.appBounds)
     val width = if (shot.jpegBase64 != null) shot.width else (size.x * scale).toInt()
     val height = if (shot.jpegBase64 != null) shot.height else (size.y * scale).toInt()
     val id = synchronized(lock) { "s${++counter}" }
     screen = Screen(id, built, reading.nodes, reading.handles, scale, width, height)
-    return ControlLogic.screenJson(id, reading.app, reading.packageName, reading.keyboard, shot.jpegBase64, width, height, shot.missing, built, scale)
+    return ControlLogic.screenJson(id, reading.app, reading.packageName, reading.keyboard, shot.jpegBase64, width, height, shot.missing, built, scale, shot.grid)
   }
 
   @Suppress("DEPRECATION")
@@ -145,7 +147,7 @@ internal object Controller {
     if (!keepScreen) screen = null
   }
 
-  /** Your touch, or Stop: the turn she was acting in is over. `by`: "stop" or "touch" (outside the banner). */
+  /** Stop on the banner: the turn she was acting in is over. `by`: "stop". */
   fun takenOver(by: String) {
     // Diagnostic only (`adb logcat -s JophielControl`): what ended her turn, and when, against her own actions.
     Log.i("JophielControl", "takeover by $by, ${SystemClock.uptimeMillis() - lastActionAt} ms after her last action started" +

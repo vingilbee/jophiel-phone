@@ -451,7 +451,7 @@ function Phase8Tests({ pending, run }: { pending: string | null; run: (label: st
 
 /** Phase 9: time to switch to the app to test on (inside Jophiel she can only read). */
 const CONTROL_DELAY_MS = 5_000
-/** The takeover test: reads this far apart, in one turn (touch the screen in between). */
+/** The takeover test: reads this far apart, in one turn (tap the banner's Stop in between). */
 const SAME_TURN_GAP_MS = 4_000
 
 function itemLine(item: ScreenItem): string {

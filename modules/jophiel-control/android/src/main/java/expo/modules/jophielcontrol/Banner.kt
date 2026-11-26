@@ -11,7 +11,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
@@ -21,9 +20,11 @@ import java.util.concurrent.TimeUnit
 
 /**
  * "Jophiel is using your phone · Stop", at the top of the screen while she's in control. Drawn by
- * the accessibility service itself (no extra permission). It also watches for touches outside it:
- * your touch anywhere (or Stop) calls `onTakeover`. Touches during her own gesture and shortly
- * after aren't yours (`ownGesture`). Hidden for the moment a screenshot is taken.
+ * the accessibility service itself (no extra permission). Only Stop calls `onTakeover`: touching
+ * the screen elsewhere doesn't stop her (2026-11-25, the user's decision), because telling your
+ * touch from her own injected gestures misfired and cut her turns short. While her gesture runs
+ * the banner lets touches through (`ownGesture`), so a tap where it sits reaches the app. Hidden
+ * for the moment a screenshot is taken.
  */
 internal class Banner(private val service: AccessibilityService, private val onTakeover: (by: String) -> Unit) {
   private val main = Handler(Looper.getMainLooper())
@@ -31,7 +32,7 @@ internal class Banner(private val service: AccessibilityService, private val onT
   private var view: View? = null
   private var params: WindowManager.LayoutParams? = null
 
-  /** Uptime ms until which touches are hers, not yours. */
+  /** Uptime ms until which the banner lets touches through (her gesture is running). */
   @Volatile
   private var ownUntil = 0L
 
@@ -48,7 +49,6 @@ internal class Banner(private val service: AccessibilityService, private val onT
       WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-        WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
       PixelFormat.TRANSLUCENT,
     ).apply {
@@ -65,7 +65,7 @@ internal class Banner(private val service: AccessibilityService, private val onT
     }
   }
 
-  /** Gone (control ended): `end_control`, the idle timeout, your touch, a switch going off. */
+  /** Gone (control ended): `end_control`, the idle timeout, Stop, a switch going off. */
   fun remove() = onMain {
     val banner = view ?: return@onMain
     view = null
@@ -76,8 +76,8 @@ internal class Banner(private val service: AccessibilityService, private val onT
 
   /**
    * Her gesture is about to run for `durationMs` (called off the main thread; returns once the
-   * banner lets touches through, so a tap where it sits reaches the app, not Stop). Touches until
-   * shortly after aren't taken for yours.
+   * banner lets touches through, so a tap where it sits reaches the app, not Stop), until shortly
+   * after it ends.
    */
   fun ownGesture(durationMs: Long) {
     ownUntil = SystemClock.uptimeMillis() + durationMs + ControlLogic.OWN_TOUCH_GRACE_MS
@@ -101,7 +101,7 @@ internal class Banner(private val service: AccessibilityService, private val onT
     runCatching { windows.updateViewLayout(banner, layout) }
   }
 
-  @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
+  @SuppressLint("SetTextI18n")
   private fun build(): View {
     val row = LinearLayout(service).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -138,17 +138,10 @@ internal class Banner(private val service: AccessibilityService, private val onT
     row.addView(message)
     row.addView(dot)
     row.addView(stop)
-    row.setOnTouchListener { _, event ->
-      if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) touched("touch")
-      false
-    }
     return row
   }
 
-  private fun touched(by: String) {
-    if (SystemClock.uptimeMillis() < ownUntil) return
-    onTakeover(by)
-  }
+  private fun touched(by: String) = onTakeover(by)
 
   private fun dp(value: Float): Float = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, service.resources.displayMetrics)
 

@@ -43,6 +43,7 @@ her understand the screen (icons without labels, layout, images).
 | `type_text` | `screen`, `n`, `text`, `enter?` (press the keyboard's go / send / search key after) | `screen` |
 | `scroll` | `screen`, `direction` up / down / left / right, `n?` (the list to scroll; default the biggest one) | `screen` |
 | `tap_point` | `screen`, `x`, `y` (pixels of that screenshot) | `screen` |
+| `tap_points` | `screen`, `points` ([x, y] each, 1–20), `gap_ms` (0–1000, default 150): tapped in order, settle and read once after the last | `screen` |
 | `swipe` | `screen`, `x1`, `y1`, `x2`, `y2`, `ms?` (100–2000) | `screen` |
 | `press` | `key`: back / home / recents / notifications / quick_settings | `screen` |
 | `end_control` | — | (nothing; hides the banner) |
@@ -82,7 +83,8 @@ her understand the screen (icons without labels, layout, images).
 - While she's in control a small banner shows at the top: **"Jophiel is using your phone · Stop"**.
   It's drawn by the accessibility service itself (no extra permission) and hidden for the moment a
   screenshot is taken, so she never sees it.
-- **Your touch stops her.** Touching the screen anywhere (or the banner's Stop) ends her control at
+- **Stop stops her** (2026-11-25: only the banner's Stop; touches elsewhere no longer count, since telling
+  yours from her own injected gestures misfired). Stop ends her control at
   once: the banner goes, and every further action **for that turn** answers `refused`, `taken_over`.
   She's told you took over. Asking her again (a new turn) lets her start again.
 - The banner hides on `end_control`, or 20 s after her last action. That also ends her control:
@@ -127,7 +129,9 @@ so a takeover lasts for exactly that turn. Without `turn`, a takeover blocks for
 - `items` in reading order (top to bottom, left to right). Numbered ones (`n`) can be acted on; ones
   without `n` are text to read. `box` = `[x, y, w, h]` in screenshot pixels. Roles: `button`,
   `text_field`, `checkbox`, `switch`, `radio`, `tab`, `image`, `list`, `link`, `text`, `item`.
-- `image`: JPEG, 720 px wide, quality 70 (~100–200 KB of base64). `image_missing`: `secure` (the app
+- `image`: JPEG, short edge 720 px, quality 70. With little or nothing numbered (a game), a light coordinate grid
+  is drawn on her copy (a line every 100 px, labelled on every edge) and `image.grid` says its step (2026-11-25).
+  ~100–200 KB of base64. `image_missing`: `secure` (the app
   forbids screenshots, e.g. banking or incognito tabs: text only), `not_supported` (below Android 11),
   `failed`; `image` is then null.
 - At most 250 items and 12,000 characters of text; beyond that `truncated: true`.

@@ -79,6 +79,17 @@ class ControlLogicTest {
     assertNull(ControlLogic.parse("gesture", mapOf("screen" to "s1", "fingers" to List(6) { listOf(1.0, 1.0, 1.0, 1.0) })))
     assertNull(ControlLogic.parse("gesture", mapOf("fingers" to listOf(listOf(1.0, 1.0, 1.0, 1.0)))))
 
+    val taps = ControlLogic.parse("tap_points", mapOf("screen" to "s1", "gap_ms" to 5000.0,
+      "points" to listOf(listOf(100.0, 900.0), listOf(120.4, 950.6))))!!
+    assertEquals(listOf(listOf(100, 900), listOf(120, 951)), taps.points!!.map { it.toList() })
+    assertEquals(ControlLogic.TAP_GAP_MAX_MS, taps.gapMs)
+    assertEquals(ControlLogic.TAP_GAP_DEFAULT_MS, ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to listOf(listOf(1.0, 2.0))))!!.gapMs)
+    assertNull(ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to emptyList<Any>())))
+    assertNull(ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to listOf(listOf(1.0, 2.0, 3.0)))))
+    assertNull(ControlLogic.parse("tap_points", mapOf("screen" to "s1", "points" to List(21) { listOf(1.0, 1.0) })))
+    assertNull(ControlLogic.parse("tap_points", mapOf("points" to listOf(listOf(1.0, 1.0)))))
+    assertTrue(ControlLogic.needsScreen("tap_points"))
+
     assertEquals("home", ControlLogic.parse("press", mapOf("key" to "home"))!!.key)
     assertNull(ControlLogic.parse("press", mapOf("key" to "power")))
     assertNotNull(ControlLogic.parse("end_control", emptyMap()))
@@ -139,12 +150,31 @@ class ControlLogicTest {
 
   @Test
   fun pointsMapToTheRealScreenAndOutsideIsOffScreen() {
-    val scale = ControlLogic.scaleFor(1080)
+    val scale = ControlLogic.scaleFor(1080, 2400)
     assertEquals(720.0 / 1080, scale, 1e-9)
-    assertEquals(1.0, ControlLogic.scaleFor(600), 1e-9)
+    assertEquals(1.0, ControlLogic.scaleFor(600, 1200), 1e-9)
     assertEquals(Pair(540, 1200), ControlLogic.toScreen(360, 800, scale, 720, 1600))
     assertNull(ControlLogic.toScreen(720, 10, scale, 720, 1600))
     assertNull(ControlLogic.toScreen(-1, 10, scale, 720, 1600))
+  }
+
+  @Test
+  fun aGridWhenThereIsLittleOrNothingNumbered() {
+    fun item(n: Int?, box: Box) = Item(n, "button", null, "x", null, false, null, false, false, false, box, 0)
+    // Nothing numbered (a game): grid.
+    assertTrue(ControlLogic.wantsGrid(listOf(item(null, Box(0, 0, 10, 10))), 1.0, 1600, 720))
+    assertTrue(ControlLogic.wantsGrid(emptyList(), 1.0, 1600, 720))
+    // One numbered view over the whole game: grid (real pixels, scaled down to the picture).
+    assertTrue(ControlLogic.wantsGrid(listOf(item(1, Box(0, 0, 2400, 1080))), 1600.0 / 2400, 1600, 720))
+    // A few small buttons: numbers are enough.
+    assertFalse(ControlLogic.wantsGrid(listOf(item(1, Box(0, 0, 100, 100))), 1.0, 1600, 720))
+    // Many items, even with a big one: an ordinary app.
+    val many = List(4) { item(it + 1, Box(0, 0, 1600, 720)) }
+    assertFalse(ControlLogic.wantsGrid(many, 1.0, 1600, 720))
+
+    assertEquals(listOf(100, 200, 300, 400, 500, 600, 700), ControlLogic.gridLines(720))
+    assertEquals(listOf(100, 200), ControlLogic.gridLines(300))
+    assertEquals(emptyList<Int>(), ControlLogic.gridLines(0))
   }
 
   @Test
@@ -249,9 +279,18 @@ class ControlLogicTest {
   // ---- JSON ----
 
   @Test
+  fun landscapeKeepsTheShortEdgeAt720() {
+    val scale = ControlLogic.scaleFor(2400, 1080)
+    assertEquals(720.0 / 1080, scale, 1e-9)
+    // A landscape picture is 1600x720, not 720x324: a point near its far corner maps back in full.
+    assertEquals(Pair(2398, 1078), ControlLogic.toScreen(1599, 719, scale, 1600, 720))
+    assertNull(ControlLogic.toScreen(1600, 10, scale, 1600, 720))
+  }
+
+  @Test
   fun theScreenJsonHasTheContractsShape() {
     val built = ControlLogic.build(settings)
-    val scale = ControlLogic.scaleFor(1080)
+    val scale = ControlLogic.scaleFor(1080, 2400)
     val json = ControlLogic.screenJson("s7", "Settings", "com.android.settings", false, null, 720, 1600, "secure", built, scale)
     assertTrue(json.startsWith("{\"id\":\"s7\",\"app\":\"Settings\",\"package\":\"com.android.settings\",\"keyboard\":false,\"image\":null,\"image_missing\":\"secure\",\"items\":["))
     assertTrue(json.contains("{\"role\":\"text\",\"text\":\"Settings\"}"))
