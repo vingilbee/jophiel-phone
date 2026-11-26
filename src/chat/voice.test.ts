@@ -309,20 +309,3 @@ describe('helpers', () => {
     expect(echoVerdict({ peakMic: 0.1, sustainedMic: 0.05, peakOutput: 0.3, threshold: 0.025, bargeInFired: true }).ok).toBe(false)
   })
 })
-
-describe('hands on the phone', () => {
-  test('a hands frame marks the turn busy until it closes or the turn ends, and never reaches the chat', () => {
-    const { channel } = harness()
-    expect(channel.handsBusy()).toBe(false)
-    expect(channel.handleFrame({ type: 'hands', turn_id: 'work', open: true })).toBe(false)
-    expect(channel.handsBusy()).toBe(true)
-    channel.handleFrame({ type: 'hands', turn_id: 'work', open: false })
-    expect(channel.handsBusy()).toBe(false)
-    channel.handleFrame({ type: 'hands', turn_id: 'work', open: true })
-    channel.handleFrame({ type: 'done', turn_id: 'work' })
-    expect(channel.handsBusy()).toBe(false)
-    channel.handleFrame({ type: 'hands', turn_id: 'work', open: true })
-    channel.handleClose()
-    expect(channel.handsBusy()).toBe(false)
-  })
-})

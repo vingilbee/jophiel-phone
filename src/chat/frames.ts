@@ -56,8 +56,7 @@ export interface VoiceLatencyReport {
 export type ServerFrame =
   | { type: 'meta'; conversation_id: string; turn_id?: string }
   | { type: 'history'; conversation_id: string | null; messages: StoredMessage[] }
-  /** `joins`: her hands were on the phone, so this message went into that running turn instead of stopping it. */
-  | { type: 'ack'; turn_id: string; user_message_id: string; conversation_id: string; joins?: string }
+  | { type: 'ack'; turn_id: string; user_message_id: string; conversation_id: string }
   | { type: 'seen'; message_id: string; conversation_id?: string | null }
   | { type: 'token'; turn_id?: string; message_id?: string; content: string }
   | { type: 'sticker'; turn_id?: string; message_id?: string; sticker: string }
@@ -67,13 +66,10 @@ export type ServerFrame =
   | { type: 'nudge_end' }
   | { type: 'reply_interrupted'; reason: string }
   | { type: 'state'; awareness: unknown }
-  /** `joined`: this message was answered inside that running turn (no reply of its own). */
-  | { type: 'done'; turn_id?: string; status?: MessageStatus; joined?: string }
+  | { type: 'done'; turn_id?: string; status?: MessageStatus }
   | { type: 'stopped'; turn_id?: string; status?: MessageStatus }
   | { type: 'error'; turn_id?: string; detail: string }
-  | { type: 'transcript'; turn_id?: string; content: string; joins?: string }
-  /** Her hands are on the phone in this turn (open) or no longer: while open, talking doesn't cut her off. */
-  | { type: 'hands'; turn_id: string; open: boolean }
+  | { type: 'transcript'; turn_id?: string; content: string }
   | { type: 'audio_start'; turn_id?: string; sample_rate: number; unprompted?: boolean }
   | { type: 'audio_segment'; turn_id?: string; segment: number; text_start: number; text_end: number }
   | { type: 'audio_end'; turn_id?: string }
@@ -100,7 +96,7 @@ export type ServerFrame =
 const HANDLED = new Set([
   'meta', 'history', 'ack', 'seen', 'token', 'sticker', 'nudge_start', 'nudge_token', 'nudge_sticker',
   'nudge_end', 'reply_interrupted', 'state', 'done', 'stopped', 'error',
-  'transcript', 'audio_start', 'audio_segment', 'audio_end', 'barge_resolved', 'hands',
+  'transcript', 'audio_start', 'audio_segment', 'audio_end', 'barge_resolved',
   'phone_action', 'phone_activity',
 ])
 

@@ -73,7 +73,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         stopHold: () => channel.stopHold(),
         adoptHold: (id: string | null) => channel.adoptHold(id),
         reportHeard: (heard: number) => channel.reportHeard(heard),
-        handsBusy: () => channel.handsBusy(),
         reportVoiceLatency: (report: Parameters<typeof channel.reportVoiceLatency>[0]) => channel.reportVoiceLatency(report),
       }),
       [channel],

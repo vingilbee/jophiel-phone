@@ -230,9 +230,8 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
       // A repeated ack (a resend the backend deduped) changes nothing: above all it must not settle
       // the reply that's streaming right now.
       if (!queued && (already || state.activeTurns.includes(frame.turn_id))) return state
-      // Sending while she replies stops that reply: whatever streamed so far is settled above it. Not
-      // while her hands are on the phone (`joins`): your words went into that turn, which goes on.
-      let next = frame.joins ? state : promote(state, (item) => !item.unprompted)
+      // Sending while she replies stops that reply: whatever streamed so far is settled above it.
+      let next = promote(state, (item) => !item.unprompted)
       next = {
         ...next,
         conversationId: frame.conversation_id ?? next.conversationId,
@@ -279,9 +278,8 @@ function applyFrame(state: ChatState, frame: ServerFrame, now: string): ChatStat
       if (state.messages.some((m) => m.key === key || (frame.turn_id && m.role === 'user' && m.turnId === frame.turn_id))) {
         return state
       }
-      // Talking over her settles whatever of her reply streamed so far above your words (unless they
-      // went into the turn her hands are working in: `joins`).
-      const next = frame.joins ? state : promote(state, (item) => !item.unprompted)
+      // Talking over her settles whatever of her reply streamed so far above your words.
+      const next = promote(state, (item) => !item.unprompted)
       const item: ChatItem = {
         key,
         id: null,
