@@ -67,7 +67,10 @@ const PREROLL_PADDING_MS = 150
 const HOLD_HANGOVER_MS = 400
 /**
  * This much actual (loud) speech over a held reply is clearly a real turn, not "mm-hm": cancel the
- * reply now instead of waiting for the user to finish. Counted from the VAD's loud frames only —
+ * reply now instead of waiting for the user to finish. Only while she's speaking (so she stops
+ * talking over them): while she's still working on a reply nothing is playing, so the server decides
+ * when the utterance ends. Committing there cut her turns off on a game's sound, or on words that
+ * would have joined her turn once her hands reached the phone. Counted from the VAD's loud frames only —
  * wall time would also count the hangover after they stop, which pushed "I see" past the limit.
  */
 const HOLD_COMMIT_SPEECH_MS = 1000
@@ -246,6 +249,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
   const holdRef = useRef<{
     stage: 'listening' | 'deciding'
     timer: Timer | null
+    /** What the hold came over: only her speaking is cut off early (`HOLD_COMMIT_SPEECH_MS`). */
+    over: 'speaking' | 'thinking'
   } | null>(null)
   // Timing marks for the in-flight voice turn, reported once when its first audio is scheduled (or
   // when it ends without any). See voice_latency.py.
@@ -556,7 +561,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
       if (!socket.holdVoice(conversationId, CAPTURE_SAMPLE_RATE)) return
       playerRef.current?.pause()
       clearAudioGraceTimer()
-      holdRef.current = { stage: 'listening', timer: null }
+      holdRef.current = { stage: 'listening', timer: null, over: phase }
       setHolding(true)
       const ring = ringRef.current
       if (ring) {
@@ -686,6 +691,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
       const vad = vadRef.current
       if (
         hold?.stage === 'listening' &&
+        hold.over === 'speaking' &&
         vad?.speaking &&
         vad.stats.speechMs >= HOLD_COMMIT_SPEECH_MS &&
         !optsRef.current.socket.handsBusy?.()
