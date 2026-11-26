@@ -72,9 +72,10 @@ describe('phase 9: phone control over the channel', () => {
     expect(await runAction(act('tap', { screen: 's1', n: 1 }), deps)).toEqual({ status: 'failed', reason: 'stale_screen' })
   })
 
-  test('end_control is done with nothing; any other done without a screen failed', async () => {
+  test('end_control and control_hold are done with nothing; any other done without a screen failed', async () => {
     const { deps } = controlDeps({ status: 'done', reason: null, screen: null })
     expect(await runAction(act('end_control'), deps)).toEqual({ status: 'done' })
+    expect(await runAction(act('control_hold'), deps)).toEqual({ status: 'done' })
     expect(await runAction(act('read_screen'), deps)).toEqual({ status: 'failed', reason: 'error' })
   })
 

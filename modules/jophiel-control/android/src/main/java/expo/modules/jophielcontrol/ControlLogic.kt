@@ -116,7 +116,7 @@ internal object ControlLogic {
   const val QUIET_MS = 300L
   /** …or this long after the action, whichever comes first. */
   const val SETTLE_MAX_MS = 2_000L
-  /** The banner (and her control) goes this long after her last action. */
+  /** The banner (and her control) goes this long after her last action (or `control_hold`: her hands still at work). */
   const val IDLE_MS = 20_000L
   /** A takeover without a `turn` blocks turn-less actions this long. */
   const val NO_TURN_BLOCK_MS = 30_000L
@@ -125,7 +125,7 @@ internal object ControlLogic {
   /** Fingers in one `gesture` (Android allows at least 10 strokes; she gets 5). */
   const val MAX_FINGERS = 5
 
-  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "tap_points", "swipe", "gesture", "press", "end_control")
+  val ACTIONS = setOf("read_screen", "tap", "long_press", "type_text", "scroll", "tap_point", "tap_points", "swipe", "gesture", "press", "end_control", "control_hold")
   val DIRECTIONS = setOf("up", "down", "left", "right")
   val KEYS = setOf("back", "home", "recents", "notifications", "quick_settings")
   /** The actions that act on a given screen (its numbers or its pixels). */
@@ -241,12 +241,12 @@ internal object ControlLogic {
 
   /**
    * Inside the Jophiel app she can read but not act: everything except `read_screen`,
-   * `end_control` and `press` back / home answers `own_app`. True: allowed.
+   * `end_control`, `control_hold` and `press` back / home answers `own_app`. True: allowed.
    */
   fun allowedInFront(request: Request, frontPackage: String?, ownPackage: String): Boolean {
     if (frontPackage != ownPackage) return true
     return when (request.action) {
-      "read_screen", "end_control" -> true
+      "read_screen", "end_control", "control_hold" -> true
       "press" -> request.key == "back" || request.key == "home"
       else -> false
     }

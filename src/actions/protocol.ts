@@ -283,6 +283,7 @@ export const CONTROL_ACTIONS: readonly string[] = [
   'gesture',
   'press',
   'end_control',
+  'control_hold',
 ]
 
 /** The screen JSON the native side built; null when it isn't one (then the action counts as failed). */

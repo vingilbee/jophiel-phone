@@ -47,8 +47,9 @@ her understand the screen (icons without labels, layout, images).
 | `swipe` | `screen`, `x1`, `y1`, `x2`, `y2`, `ms?` (100–2000) | `screen` |
 | `press` | `key`: back / home / recents / notifications / quick_settings | `screen` |
 | `end_control` | — | (nothing; hides the banner) |
+| `control_hold` | — | (nothing; shows the banner and restarts its 20 s: her hands are thinking between actions) |
 
-- Every action except `end_control` answers with the **screen after it settles** (no window change
+- Every action except `end_control` and `control_hold` answers with the **screen after it settles** (no window change
   for 300 ms, at most 2 s), so she never needs a separate `read_screen` between steps.
 - `screen` is the id of the screen she's looking at (`s1`, `s2`…). Numbers belong to that screen.
   Only the phone's latest screen is valid: an older id → `failed`, `stale_screen`. An item that has
@@ -87,7 +88,9 @@ her understand the screen (icons without labels, layout, images).
   yours from her own injected gestures misfired). Stop ends her control at
   once: the banner goes, and every further action **for that turn** answers `refused`, `taken_over`.
   She's told you took over. Asking her again (a new turn) lets her start again.
-- The banner hides on `end_control`, or 20 s after her last action. That also ends her control:
+- The banner hides on `end_control`, or 20 s after her last action or `control_hold` (2026-11-25: her hands send
+  one every 8 s while a job runs, so the banner stays up for the whole job; a hold for a turn you stopped answers
+  `taken_over`, so she learns of your Stop between actions too). That also ends her control:
   the next action shows the banner again.
 
 ## Privacy

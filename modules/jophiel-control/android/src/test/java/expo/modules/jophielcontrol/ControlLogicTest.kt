@@ -93,6 +93,7 @@ class ControlLogicTest {
     assertEquals("home", ControlLogic.parse("press", mapOf("key" to "home"))!!.key)
     assertNull(ControlLogic.parse("press", mapOf("key" to "power")))
     assertNotNull(ControlLogic.parse("end_control", emptyMap()))
+    assertEquals("t1", ControlLogic.parse("control_hold", mapOf("turn" to "t1"))!!.turn)
     assertNull(ControlLogic.parse("launch_rockets", emptyMap()))
   }
 
@@ -105,6 +106,7 @@ class ControlLogicTest {
     assertFalse(ControlLogic.allowedInFront(Request("tap", screen = "s1", n = 1), own, own))
     assertFalse(ControlLogic.allowedInFront(Request("type_text", screen = "s1", n = 1, text = "x"), own, own))
     assertTrue(ControlLogic.allowedInFront(Request("read_screen"), own, own))
+    assertTrue(ControlLogic.allowedInFront(Request("control_hold"), own, own))
     assertTrue(ControlLogic.allowedInFront(Request("press", key = "back"), own, own))
     assertTrue(ControlLogic.allowedInFront(Request("press", key = "home"), own, own))
     assertFalse(ControlLogic.allowedInFront(Request("press", key = "quick_settings"), own, own))
