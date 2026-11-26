@@ -99,6 +99,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       onBargeResolved: (action) => sessionRef.current.handleBargeResolved(action),
       onReplyInterrupted: () => sessionRef.current.yieldToEvent(),
       onDisconnect: () => sessionRef.current.handleDisconnect(),
+      onWorking: () => sessionRef.current.handleWorking(),
     }
     return () => {
       channel.events = {}

@@ -141,6 +141,8 @@ export interface VoiceSession {
   handleAudioSegment: (segment: number, textStart: number, textEnd: number) => void
   /** Phone: the socket closed. Wire to onDisconnect. */
   handleDisconnect: () => void
+  /** Her hands acted on this phone during the pending turn: restart its no-answer wait. Wire to onWorking. */
+  handleWorking: () => void
 }
 
 interface Options {
@@ -228,6 +230,8 @@ export function useVoiceSession(opts: Options): VoiceSession {
   optsRef.current = opts
 
   const audioArrivedRef = useRef(false)
+  // Restarts the pending voice turn's no-answer wait; null when no turn is waiting.
+  const rearmNoAnswerRef = useRef<(() => void) | null>(null)
   // `audio_end` is sent before the server's final `done` frame. Re-opening the mic after playback
   // alone can therefore cancel the still-finishing turn and leave the pending response stuck
   // forever. A follow-up is safe only after both halves of the voice reply have completed.
@@ -393,8 +397,10 @@ export function useVoiceSession(opts: Options): VoiceSession {
     audioArrivedRef.current = false
     // Safety net: if nothing at all comes back, don't think forever. Give up on the turn (fencing
     // any late reply), say so, and listen again.
+    // Her hands acting on this phone restart the wait (handleWorking): a turn spent tapping
+    // through a game says nothing for minutes and is not stuck.
     const turnEpoch = epochRef.current
-    const noAnswer = setTimeout(() => {
+    const giveUp = () => {
       if (epochRef.current !== turnEpoch || stateRef.current !== 'thinking' || audioArrivedRef.current) return
       if (holdRef.current) return
       epochRef.current += 1
@@ -413,7 +419,13 @@ export function useVoiceSession(opts: Options): VoiceSession {
       }
       setError('No answer came back. Please try again.')
       enterListening(false)
-    }, NO_ANSWER_TIMEOUT_MS)
+    }
+    let noAnswer = setTimeout(giveUp, NO_ANSWER_TIMEOUT_MS)
+    const rearm = () => {
+      clearTimeout(noAnswer)
+      noAnswer = setTimeout(giveUp, NO_ANSWER_TIMEOUT_MS)
+    }
+    rearmNoAnswerRef.current = rearm
     replyDoneRef.current = false
     playbackDoneRef.current = false
     const epoch = epochRef.current
@@ -429,7 +441,10 @@ export function useVoiceSession(opts: Options): VoiceSession {
       },
     }
     const reply = request()
-    reply.finally(() => clearTimeout(noAnswer)).catch(() => {})
+    reply.finally(() => {
+      clearTimeout(noAnswer)
+      if (rearmNoAnswerRef.current === rearm) rearmNoAnswerRef.current = null
+    }).catch(() => {})
     try {
       const result = await reply
       // Superseded by a barge-in: change nothing (the chat model keeps the thread id itself).
@@ -976,6 +991,10 @@ export function useVoiceSession(opts: Options): VoiceSession {
     return phase === 'idle' ? level * 0.35 : level
   }, [])
 
+  const handleWorking = useCallback(() => {
+    rearmNoAnswerRef.current?.()
+  }, [])
+
   const yieldToEvent = useCallback(() => {
     if (holdRef.current) {
       // The user is talking over the (paused) reply: drop the reply, keep their turn going. Her
@@ -1163,6 +1182,7 @@ export function useVoiceSession(opts: Options): VoiceSession {
     getLevel,
     beginUnpromptedSpeech,
     yieldToEvent,
+    handleWorking,
     handleAudio,
     handleAudioEnd,
     handleBargeResolved: resolveHold,

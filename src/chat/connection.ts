@@ -209,6 +209,7 @@ export class ChatConnection {
       const frame = parseFrame(event.data)
       if (!frame) return
       if (frame.type === 'phone_action') {
+        this.voice.noteWorking()
         this.events.onPhoneAction(frame)
         return
       }
