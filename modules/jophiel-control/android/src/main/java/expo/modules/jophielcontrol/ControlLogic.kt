@@ -99,6 +99,10 @@ internal object ControlLogic {
   const val MAX_TYPED = 4_000
   /** The screenshot's short edge: 720 px wide in portrait, 720 px tall in landscape. */
   const val IMAGE_SHORT_EDGE = 720
+  /** The coordinate grid (`wantsGrid`): a line every this many picture pixels, labelled at the edges. */
+  const val GRID_STEP = 100
+  private const val GRID_MAX_ITEMS = 3
+  private const val GRID_COVER_SHARE = 0.5
   const val JPEG_QUALITY = 70
   const val MAX_WAIT_MS = 5_000L
   const val SWIPE_DEFAULT_MS = 300L
@@ -261,6 +265,29 @@ internal object ControlLogic {
     val short = minOf(screenWidth, screenHeight)
     return if (short > IMAGE_SHORT_EDGE) IMAGE_SHORT_EDGE.toDouble() / short else 1.0
   }
+
+  /**
+   * Whether her picture gets a coordinate grid: when there's (almost) nothing numbered to act on, she taps by
+   * pixel, and a point is read far better off labelled lines than guessed on a bare picture. That's no numbered
+   * item, or only a few with one covering most of the picture (a game drawn as one big view).
+   */
+  fun wantsGrid(items: List<Item>, scale: Double, imageWidth: Int, imageHeight: Int): Boolean {
+    val numbered = items.filter { it.n != null }
+    if (numbered.isEmpty()) return true
+    if (numbered.size > GRID_MAX_ITEMS) return false
+    val picture = imageWidth.toLong() * imageHeight
+    if (picture <= 0) return false
+    return numbered.any { item ->
+      val b = item.box.scaled(scale)
+      val w = (minOf(b.right, imageWidth) - maxOf(b.left, 0)).coerceAtLeast(0)
+      val h = (minOf(b.bottom, imageHeight) - maxOf(b.top, 0)).coerceAtLeast(0)
+      w.toLong() * h >= picture * GRID_COVER_SHARE
+    }
+  }
+
+  /** Where the grid's lines sit along one edge of the picture: every `GRID_STEP` pixels, inside it. */
+  fun gridLines(size: Int, step: Int = GRID_STEP): List<Int> =
+    if (size <= 0 || step <= 0) emptyList() else (step until size step step).toList()
 
   /** A screenshot pixel to a real screen pixel; null when it's outside the screenshot (`off_screen`). */
   fun toScreen(x: Int, y: Int, scale: Double, imageWidth: Int, imageHeight: Int): Pair<Int, Int>? {
@@ -485,6 +512,7 @@ internal object ControlLogic {
     imageMissing: String?,
     built: Built,
     scale: Double,
+    grid: Int? = null,
   ): String {
     val out = StringBuilder(256 + (jpegBase64?.length ?: 0))
     out.append("{\"id\":").append(quote(id))
@@ -492,7 +520,8 @@ internal object ControlLogic {
     out.append(",\"package\":").append(packageName?.let(::quote) ?: "null")
     out.append(",\"keyboard\":").append(keyboard)
     out.append(",\"image\":")
-    if (jpegBase64 != null) out.append("{\"jpeg_base64\":").append(quote(jpegBase64)).append(",\"width\":$imageWidth,\"height\":$imageHeight}")
+    if (jpegBase64 != null) out.append("{\"jpeg_base64\":").append(quote(jpegBase64)).append(",\"width\":$imageWidth,\"height\":$imageHeight")
+      .append(if (grid != null) ",\"grid\":$grid}" else "}")
     else out.append("null")
     out.append(",\"image_missing\":").append(imageMissing?.let(::quote) ?: "null")
     out.append(",\"items\":[")

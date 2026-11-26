@@ -159,6 +159,25 @@ class ControlLogicTest {
   }
 
   @Test
+  fun aGridWhenThereIsLittleOrNothingNumbered() {
+    fun item(n: Int?, box: Box) = Item(n, "button", null, "x", null, false, null, false, false, false, box, 0)
+    // Nothing numbered (a game): grid.
+    assertTrue(ControlLogic.wantsGrid(listOf(item(null, Box(0, 0, 10, 10))), 1.0, 1600, 720))
+    assertTrue(ControlLogic.wantsGrid(emptyList(), 1.0, 1600, 720))
+    // One numbered view over the whole game: grid (real pixels, scaled down to the picture).
+    assertTrue(ControlLogic.wantsGrid(listOf(item(1, Box(0, 0, 2400, 1080))), 1600.0 / 2400, 1600, 720))
+    // A few small buttons: numbers are enough.
+    assertFalse(ControlLogic.wantsGrid(listOf(item(1, Box(0, 0, 100, 100))), 1.0, 1600, 720))
+    // Many items, even with a big one: an ordinary app.
+    val many = List(4) { item(it + 1, Box(0, 0, 1600, 720)) }
+    assertFalse(ControlLogic.wantsGrid(many, 1.0, 1600, 720))
+
+    assertEquals(listOf(100, 200, 300, 400, 500, 600, 700), ControlLogic.gridLines(720))
+    assertEquals(listOf(100, 200), ControlLogic.gridLines(300))
+    assertEquals(emptyList<Int>(), ControlLogic.gridLines(0))
+  }
+
+  @Test
   fun scrollingDownDragsTheFingerUp() {
     val s = ControlLogic.scrollStroke(Box(0, 0, 100, 1000), "down")
     assertTrue(s[1] > s[3])

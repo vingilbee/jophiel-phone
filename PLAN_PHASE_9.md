@@ -129,7 +129,9 @@ so a takeover lasts for exactly that turn. Without `turn`, a takeover blocks for
 - `items` in reading order (top to bottom, left to right). Numbered ones (`n`) can be acted on; ones
   without `n` are text to read. `box` = `[x, y, w, h]` in screenshot pixels. Roles: `button`,
   `text_field`, `checkbox`, `switch`, `radio`, `tab`, `image`, `list`, `link`, `text`, `item`.
-- `image`: JPEG, 720 px wide, quality 70 (~100–200 KB of base64). `image_missing`: `secure` (the app
+- `image`: JPEG, short edge 720 px, quality 70. With little or nothing numbered (a game), a light coordinate grid
+  is drawn on her copy (a line every 100 px, labelled on every edge) and `image.grid` says its step (2026-11-25).
+  ~100–200 KB of base64. `image_missing`: `secure` (the app
   forbids screenshots, e.g. banking or incognito tabs: text only), `not_supported` (below Android 11),
   `failed`; `image` is then null.
 - At most 250 items and 12,000 characters of text; beyond that `truncated: true`.

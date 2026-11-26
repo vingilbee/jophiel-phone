@@ -121,7 +121,7 @@ internal object Controller {
     val height = if (shot.jpegBase64 != null) shot.height else (size.y * scale).toInt()
     val id = synchronized(lock) { "s${++counter}" }
     screen = Screen(id, built, reading.nodes, reading.handles, scale, width, height)
-    return ControlLogic.screenJson(id, reading.app, reading.packageName, reading.keyboard, shot.jpegBase64, width, height, shot.missing, built, scale)
+    return ControlLogic.screenJson(id, reading.app, reading.packageName, reading.keyboard, shot.jpegBase64, width, height, shot.missing, built, scale, shot.grid)
   }
 
   @Suppress("DEPRECATION")

@@ -17,12 +17,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** A screenshot she can be shown, or why there isn't one. */
-internal class Shot(val jpegBase64: String?, val width: Int, val height: Int, val missing: String?)
+internal class Shot(val jpegBase64: String?, val width: Int, val height: Int, val missing: String?, val grid: Int? = null)
 
 /**
  * The picture with numbers: Android's accessibility screenshot (Android 11+), with our banner
  * hidden for the moment it's taken, scaled so its short edge is 720 px, a numbered box drawn on every item she
- * can act on, as JPEG. A secure window (banking, incognito) comes out black: text only.
+ * can act on, as JPEG. With little or nothing numbered (a game: `ControlLogic.wantsGrid`) a light coordinate
+ * grid goes on first, a line every `GRID_STEP` px labelled at the edges, so she reads a point instead of guessing
+ * it. Only her copy: the screen itself never shows it. A secure window (banking, incognito) comes out black: text only.
  */
 internal object Screenshot {
   /** Android refuses screenshots closer together than about a third of a second. */
@@ -53,10 +55,12 @@ internal object Screenshot {
       val scaled = if (width == bitmap.width) bitmap else Bitmap.createScaledBitmap(bitmap, width, height, true)
       try {
         if (blank(scaled, appBounds?.scaled(scale))) return Shot(null, width, height, "secure")
+        val grid = if (ControlLogic.wantsGrid(items, scale, width, height)) ControlLogic.GRID_STEP else null
+        if (grid != null) drawGrid(scaled, grid)
         draw(scaled, items, scale)
         val out = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, ControlLogic.JPEG_QUALITY, out)
-        return Shot(Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP), width, height, null)
+        return Shot(Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP), width, height, null, grid)
       } finally {
         if (scaled !== bitmap) scaled.recycle()
       }
@@ -133,6 +137,51 @@ internal object Screenshot {
       }
     }
     return ControlLogic.mostlyBlack(pixels)
+  }
+
+  /**
+   * Thin lines every `step` px, light with a dark edge so they read on bright and dark scenes alike, and their
+   * pixel value on all four edges (x along the top and bottom, y down the left and right).
+   */
+  private fun drawGrid(bitmap: Bitmap, step: Int) {
+    val canvas = Canvas(bitmap)
+    val w = bitmap.width.toFloat()
+    val h = bitmap.height.toFloat()
+    val light = Paint().apply { color = Color.argb(110, 255, 255, 255); strokeWidth = 1f }
+    val dark = Paint().apply { color = Color.argb(80, 0, 0, 0); strokeWidth = 1f }
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.WHITE
+      textSize = 15f
+      isFakeBoldText = true
+    }
+    val tag = Paint().apply { color = Color.argb(150, 0, 0, 0) }
+    val xs = ControlLogic.gridLines(bitmap.width, step)
+    val ys = ControlLogic.gridLines(bitmap.height, step)
+    for (x in xs) {
+      canvas.drawLine(x + 1f, 0f, x + 1f, h, dark)
+      canvas.drawLine(x.toFloat(), 0f, x.toFloat(), h, light)
+    }
+    for (y in ys) {
+      canvas.drawLine(0f, y + 1f, w, y + 1f, dark)
+      canvas.drawLine(0f, y.toFloat(), w, y.toFloat(), light)
+    }
+    fun label(value: Int, left: Float, top: Float) {
+      val s = value.toString()
+      val tw = text.measureText(s) + 6f
+      val th = 18f
+      val x = left.coerceIn(0f, (w - tw).coerceAtLeast(0f))
+      val y = top.coerceIn(0f, (h - th).coerceAtLeast(0f))
+      canvas.drawRect(x, y, x + tw, y + th, tag)
+      canvas.drawText(s, x + 3f, y + th - 4f, text)
+    }
+    for (x in xs) {
+      label(x, x + 2f, 0f)
+      label(x, x + 2f, h - 18f)
+    }
+    for (y in ys) {
+      label(y, 0f, y + 2f)
+      label(y, w, y + 2f)
+    }
   }
 
   private fun draw(bitmap: Bitmap, items: List<Item>, scale: Double) {
