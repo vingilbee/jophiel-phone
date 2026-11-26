@@ -180,10 +180,13 @@ export async function runAction(action: PhoneAction, deps: ActionDeps): Promise<
   return result
 }
 
-/** Phase 9: every action but `end_control` answers `done` with the screen after it; without one it failed. */
+/** Control actions that answer `done` with nothing: ending control, and keeping the banner up while her hands think. */
+const NO_SCREEN = ['end_control', 'control_hold']
+
+/** Phase 9: every other control action answers `done` with the screen after it; without one it failed. */
 async function control(action: PhoneAction, deps: ActionDeps): Promise<ActionResult> {
   const answer = await deps.device.control(action.action, action.args)
-  if (answer.status === 'done' && action.action !== 'end_control' && !answer.screen) return { status: 'failed', reason: 'error' }
+  if (answer.status === 'done' && !NO_SCREEN.includes(action.action) && !answer.screen) return { status: 'failed', reason: 'error' }
   return answered(answer)
 }
 

@@ -36,6 +36,7 @@ function harness(options: { ready?: boolean; conversationId?: string | null; kno
     onBargeResolved: (action) => calls.push(`barge:${action}`),
     onReplyInterrupted: () => calls.push('interrupted'),
     onDisconnect: () => calls.push('disconnect'),
+    onWorking: () => calls.push('working'),
   }
   channel.events = events
   return { channel, sent, binary, settled, calls, setReady: (value: boolean) => { ready = value } }
@@ -45,6 +46,21 @@ const last = <T,>(items: T[]) => items[items.length - 1]
 const pcmBuffer = (samples: number) => new Int16Array(samples).buffer
 
 describe('voice turn', () => {
+  test('her phone actions count as work only while a voice reply is pending', async () => {
+    const { channel, calls } = harness()
+    channel.noteWorking()
+    expect(calls).toEqual([])
+    expect(channel.startVoice('c1', 16000)).toBe(true)
+    const reply = channel.endVoice('c1')
+    channel.noteWorking()
+    channel.noteWorking()
+    expect(calls).toEqual(['working', 'working'])
+    channel.handleFrame({ type: 'done', status: 'completed' } as ServerFrame)
+    await reply
+    channel.noteWorking()
+    expect(calls).toEqual(['working', 'working'])
+  })
+
   test('start → audio → end → reply text resolves the turn', async () => {
     const { channel, sent, binary } = harness()
     expect(channel.startVoice('c1', 16000)).toBe(true)

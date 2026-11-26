@@ -39,4 +39,5 @@ export const ACTION_GROUP: Partial<Record<string, ActionGroup>> = {
   gesture: 'control',
   press: 'control',
   end_control: 'control',
+  control_hold: 'control',
 }

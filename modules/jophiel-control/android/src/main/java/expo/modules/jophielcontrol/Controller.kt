@@ -19,7 +19,9 @@ internal class Answer(val status: String, val reason: String?, val screen: Strin
  * One action at a time, in the order they arrive: check it (service on, phone control allowed,
  * her turn not taken over, screen on, unlocked, not inside our own app, her screen id still the
  * latest), show the banner, act, wait for the screen to settle, read the new one. The phone keeps
- * only the latest screen, and drops it when control ends.
+ * only the latest screen, and drops it when control ends. `control_hold` passes the same checks
+ * and only keeps the banner up (her hands are thinking between actions); a hold of a turn you
+ * stopped answers `taken_over`, so she learns of your Stop between actions too.
  */
 internal object Controller {
   private val executor = Executors.newSingleThreadExecutor()
@@ -74,6 +76,12 @@ internal object Controller {
     // Unlocked only: with nobody looking at the screen, the banner's Stop can't stop her.
     if (context.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true) return refused("locked")
     if (!ControlLogic.allowedInFront(request, ScreenReader.frontPackage(service), context.packageName)) return refused("own_app")
+    if (request.action == "control_hold") {
+      // Her hands are still at work (thinking between actions): the banner stays, nothing is done or read.
+      service.banner.show()
+      restartIdle()
+      return Answer("done", null, null)
+    }
     val current = screen
     if (ControlLogic.needsScreen(request.action) && (current == null || current.id != request.screen)) return failed("stale_screen")
 

@@ -37,6 +37,8 @@ export interface VoiceEvents {
   onReplyInterrupted?: () => void
   /** The socket closed. Called before the voice turn in flight is settled. */
   onDisconnect?: () => void
+  /** Her hands acted on this phone while a voice reply is pending: she's working, not stuck. */
+  onWorking?: () => void
 }
 
 /** What the channel needs from the connection. */
@@ -92,6 +94,14 @@ export class VoiceChannel {
   constructor(private readonly io: VoiceIo) {}
 
   // ---- Incoming ------------------------------------------------------------------------------
+
+  /**
+   * A phone action for her arrived (her hands on this screen). While a voice turn waits for its
+   * reply, that's proof the turn is alive, even though it has said nothing yet.
+   */
+  noteWorking() {
+    if (this.pending) this.events.onWorking?.()
+  }
 
   /** Streamed TTS audio for the reply being spoken. */
   handleBinary(data: ArrayBuffer) {
